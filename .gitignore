@@ -1,0 +1,9 @@
+config/secrets/
+.env
+*.key
+*_api_key.txt
+
+outputs/
+generated/
+__pycache__/
+*.pyc

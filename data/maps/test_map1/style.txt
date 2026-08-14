@@ -1,0 +1,4 @@
+A semi-realistic fantasy roguelike outdoor-dungeon ruin.
+The scene mixes ancient grey stone ruins, wooden walkways, dark grass, dense pale-green forest, and shallow blue-green water.
+The mood is mysterious and abandoned, with muted natural colours, mossy damp surfaces, and readable tile-based game materials.
+Generate flat, tileable material surfaces suitable for later UE5 modular tile/PCG reconstruction.

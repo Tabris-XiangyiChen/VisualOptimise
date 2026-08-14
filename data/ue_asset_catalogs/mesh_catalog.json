@@ -1,0 +1,50 @@
+{
+  "catalog_version": "ue_mesh_catalog_v1",
+  "description": "Logical mesh IDs available to the Python TileSet solver. These IDs must match DA_GlobalMeshRegistry in UE.",
+  "meshes": [
+    {
+      "mesh_id": "tile_plane",
+      "ue_mesh_note": "Currently mapped to UE Engine BasicShapes Plane in DA_GlobalMeshRegistry.",
+      "role_tags": ["floor_surface", "grass_surface", "wood_surface", "flat_surface", "walkable"],
+      "shape_type": "flat_tile",
+      "height_class": "flat",
+      "supports_material_families": ["stone", "wood", "grass", "organic_ground", "sand", "dirt"],
+      "default_height": 0,
+      "default_z_offset": 0,
+      "description": "Generic flat tile plane for floors, ground, grass, paths, wood planks, and other flat walkable surfaces."
+    },
+    {
+      "mesh_id": "water_plane",
+      "ue_mesh_note": "Currently mapped to UE Engine BasicShapes Plane in DA_GlobalMeshRegistry.",
+      "role_tags": ["water_surface", "flat_surface"],
+      "shape_type": "flat_tile",
+      "height_class": "flat",
+      "supports_material_families": ["water"],
+      "default_height": 0,
+      "default_z_offset": -20,
+      "description": "Flat plane for water-like surfaces. Currently uses the same physical plane mesh but a different logical mesh ID."
+    },
+    {
+      "mesh_id": "wall_block",
+      "ue_mesh_note": "Currently mapped to UE Engine BasicShapes Cube in DA_GlobalMeshRegistry.",
+      "role_tags": ["wall_surface", "blocking", "vertical_structure"],
+      "shape_type": "vertical_block",
+      "height_class": "high",
+      "supports_material_families": ["stone", "wood", "metal"],
+      "default_height": 300,
+      "default_z_offset": 0,
+      "description": "Generic full-height wall block. Currently uses Cube as test geometry."
+    },
+    {
+      "mesh_id": "door_proxy",
+      "ue_mesh_note": "Currently mapped to UE Engine BasicShapes Cube in DA_GlobalMeshRegistry.",
+      "role_tags": ["door_prop", "gate_prop", "vertical_prop", "interactive"],
+      "shape_type": "vertical_prop",
+      "height_class": "medium",
+      "supports_material_families": ["wood", "metal", "stone"],
+      "default_height": 250,
+      "default_z_offset": 0,
+      "description": "Simple door or gate proxy. Currently uses Cube as test geometry."
+    }
+  ]
+}

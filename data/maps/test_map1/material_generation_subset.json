@@ -1,0 +1,19 @@
+{
+  "recommended_first_material_subset": [
+    "stone_wall",
+    "stone_floor",
+    "wood_planks",
+    "wooden_door",
+    "grass_ground",
+    "water"
+  ],
+  "defer_until_later": [
+    "clover_patch",
+    "tree_foliage",
+    "tall_grass"
+  ],
+  "skip": [
+    "void"
+  ],
+  "reason": "This reduces the next experiment to the main surfaces needed for a UE5 tile-based prototype while avoiding object/foliage complexity at the first pass."
+}

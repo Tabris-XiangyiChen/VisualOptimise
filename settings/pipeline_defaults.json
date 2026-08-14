@@ -1,0 +1,9 @@
+{
+  "default_map": "test_map1_clean",
+  "runtime_texture_backend": "sd15",
+  "semantic_mode": "llm",
+  "material_mode": "preview-only",
+  "llm_max_attempts": 2,
+  "prompt_llm_max_attempts": 2,
+  "refresh_runtime_data": true
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "backend_paths_v1",
+  "sd15": {
+    "webui_base_url": "http://127.0.0.1:7860",
+    "python": "I:\\MiniConda3\\envs\\dissertation\\python.exe"
+  },
+  "stablematerials": {
+    "python": "I:\\MiniConda3\\envs\\stablematerials\\python.exe",
+    "model_dir": "I:\\Disertation\\StableMaterials",
+    "worker": "visualoptimise.stablematerials_worker"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "schema_version": "material_generation_defaults_v1",
+  "description": "Default generation count and seeds for preview material generation. CLI arguments override this file.",
+  "seeds": [111, 222],
+  "images_per_material": 2
+}

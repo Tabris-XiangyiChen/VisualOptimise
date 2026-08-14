@@ -1,0 +1,7 @@
+{
+  "schema_version": "runtime_export_defaults_v1",
+  "runtime_texture_backend": "sd15",
+  "refresh_runtime_data": true,
+  "include_backend_candidates": true,
+  "selection_policy": "first_available_seed"
+}
