@@ -8,5 +8,9 @@
     "python": "I:\\MiniConda3\\envs\\stablematerials\\python.exe",
     "model_dir": "I:\\Disertation\\StableMaterials",
     "worker": "visualoptimise.stablematerials_worker"
+  },
+  "ue_runtime": {
+    "copy_destination": "I:\\Disertation\\VisualOptimizationUE\\Content\\VisualOptimization\\RuntimeData",
+    "virtual_root": "VisualOptimization/RuntimeData"
   }
 }

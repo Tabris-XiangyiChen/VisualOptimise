@@ -13,15 +13,17 @@ from typing import Any
 from PIL import Image
 
 from visualoptimise.artifacts import read_json, write_json, write_text
+from visualoptimise.backend_config import (
+    load_backend_paths,
+    stablematerials_generation_settings,
+    stablematerials_worker_command,
+)
 from visualoptimise.image_tools import create_tiled_preview, save_image
 from visualoptimise.webui_client import WebUIClient
 
 
 TEXTURE_TYPES = ("basecolor", "normal", "roughness", "height", "metallic")
 REQUIRED_CHECKPOINT = "v1-5-pruned-emaonly.safetensors [6ce0161689]"
-STABLEMATERIALS_PYTHON = Path(r"I:\MiniConda3\envs\stablematerials\python.exe")
-STABLEMATERIALS_MODEL_DIR = Path(r"I:\Disertation\StableMaterials")
-STABLEMATERIALS_WORKER = Path(__file__).with_name("stablematerials_worker.py")
 
 SD15_GENERATION_SETTINGS = {
     "endpoint": "/sdapi/v1/txt2img",
@@ -48,7 +50,6 @@ STABLEMATERIALS_GENERATION_SETTINGS = {
     "seed": 2060,
     "tileable": True,
     "negative_prompt": None,
-    "custom_pipeline": str(STABLEMATERIALS_MODEL_DIR),
     "local_files_only": True,
     "trust_remote_code": False,
     "unet_subfolder": "unet_lcm",
@@ -84,6 +85,8 @@ STABLEMATERIALS_REQUIRED_FILES = [
 
 def preflight_generation_backends(pipeline: Any) -> dict[str, Any]:
     """Check the two local generation backends without changing models."""
+    backend_paths = load_backend_paths(pipeline.root)
+    stable_settings = stablematerials_generation_settings(STABLEMATERIALS_GENERATION_SETTINGS, backend_paths)
     errors: list[str] = []
     warnings: list[str] = []
     webui_info: dict[str, Any] = {}
@@ -99,11 +102,11 @@ def preflight_generation_backends(pipeline: Any) -> dict[str, Any]:
             )
     except Exception as exc:
         errors.append(f"A1111 API unavailable: {exc}")
-    if not STABLEMATERIALS_PYTHON.is_file():
-        errors.append(f"StableMaterials Python not found: {STABLEMATERIALS_PYTHON}")
-    if not STABLEMATERIALS_WORKER.is_file():
-        errors.append(f"StableMaterials worker not found: {STABLEMATERIALS_WORKER}")
-    missing = missing_stablematerials_files()
+    if backend_paths.stablematerials_python is None or not backend_paths.stablematerials_python.is_file():
+        errors.append(f"StableMaterials Python not found: {backend_paths.stablematerials_python}")
+    if backend_paths.stablematerials_worker_kind == "script" and not Path(backend_paths.stablematerials_worker).is_file():
+        errors.append(f"StableMaterials worker not found: {backend_paths.stablematerials_worker}")
+    missing = missing_stablematerials_files(backend_paths.stablematerials_model_dir)
     if missing:
         errors.append("StableMaterials local files missing: " + json.dumps(missing[:20], indent=2))
     return {
@@ -118,10 +121,10 @@ def preflight_generation_backends(pipeline: Any) -> dict[str, Any]:
         },
         "stablematerials_lcm": {
             "backend": "stablematerials_lcm",
-            "python": str(STABLEMATERIALS_PYTHON),
-            "model_dir": str(STABLEMATERIALS_MODEL_DIR),
-            "worker": str(STABLEMATERIALS_WORKER),
-            "settings": STABLEMATERIALS_GENERATION_SETTINGS,
+            "python": str(backend_paths.stablematerials_python),
+            "model_dir": str(backend_paths.stablematerials_model_dir),
+            "worker": backend_paths.stablematerials_worker,
+            "settings": stable_settings,
         },
     }
 
@@ -175,9 +178,13 @@ def generate_sd15_materials(client: WebUIClient, output_root: Path, compiled: di
     return outputs
 
 
-def generate_stablematerials_lcm(output_root: Path, request_dir: Path, compiled: dict[str, Any]) -> dict[str, Any]:
+def generate_stablematerials_lcm(output_root: Path, request_dir: Path, compiled: dict[str, Any], project_root: Path) -> dict[str, Any]:
+    backend_paths = load_backend_paths(project_root)
+    if backend_paths.stablematerials_model_dir is None:
+        raise FileNotFoundError("StableMaterials model directory is not configured in settings/backend_paths.json.")
+    stable_settings = stablematerials_generation_settings(STABLEMATERIALS_GENERATION_SETTINGS, backend_paths)
     request = {
-        "generation": STABLEMATERIALS_GENERATION_SETTINGS,
+        "generation": stable_settings,
         "materials": [
             {"material_id": item["material_slot_id"], "prompt": item["positive_prompt"]}
             for item in compiled.get("prompts", [])
@@ -189,15 +196,15 @@ def generate_stablematerials_lcm(output_root: Path, request_dir: Path, compiled:
     env = os.environ.copy()
     env["HF_HUB_OFFLINE"] = "1"
     env["TRANSFORMERS_OFFLINE"] = "1"
-    command = [
-        str(STABLEMATERIALS_PYTHON),
-        str(STABLEMATERIALS_WORKER),
+    command = stablematerials_worker_command(backend_paths) + [
         "--request",
         str(request_path),
         "--output",
         str(output_root),
+        "--model-dir",
+        str(backend_paths.stablematerials_model_dir),
     ]
-    result = subprocess.run(command, cwd=str(Path(r"I:\Disertation")), env=env, capture_output=True, text=True, timeout=1800)
+    result = subprocess.run(command, cwd=str(backend_paths.stablematerials_working_dir), env=env, capture_output=True, text=True, timeout=1800)
     write_text(request_dir / "stablematerials_worker_stdout.txt", result.stdout)
     write_text(request_dir / "stablematerials_worker_stderr.txt", result.stderr)
     report_path = output_root / "stablematerials_worker_report.json"
@@ -320,13 +327,13 @@ def build_generated_material_dispatch(
     }
 
 
-def missing_stablematerials_files() -> list[str]:
+def missing_stablematerials_files(model_dir: Path | None) -> list[str]:
     missing: list[str] = []
-    if not STABLEMATERIALS_MODEL_DIR.is_dir():
-        missing.append(str(STABLEMATERIALS_MODEL_DIR))
+    if model_dir is None or not model_dir.is_dir():
+        missing.append(str(model_dir))
         return missing
     for relative in STABLEMATERIALS_REQUIRED_FILES:
-        path = STABLEMATERIALS_MODEL_DIR / relative
+        path = model_dir / relative
         if not path.is_file() or path.stat().st_size <= 0:
             missing.append(relative)
     return missing

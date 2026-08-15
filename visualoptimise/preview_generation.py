@@ -18,12 +18,10 @@ from PIL import Image, ImageStat
 from visualoptimise.generation_backend import (
     REQUIRED_CHECKPOINT,
     STABLEMATERIALS_GENERATION_SETTINGS,
-    STABLEMATERIALS_MODEL_DIR,
-    STABLEMATERIALS_PYTHON,
-    STABLEMATERIALS_WORKER,
     missing_stablematerials_files,
 )
 from visualoptimise.artifacts import read_json, write_json, write_text
+from visualoptimise.backend_config import load_backend_paths, stablematerials_generation_settings, stablematerials_worker_command
 from visualoptimise.image_tools import create_tiled_preview, save_image
 from visualoptimise.webui_client import WebUIClient
 
@@ -42,10 +40,7 @@ SD15_SETTINGS = {
     "save_images": False,
 }
 
-STABLEMATERIALS_SETTINGS = {
-    **STABLEMATERIALS_GENERATION_SETTINGS,
-    "seed": None,
-}
+STABLEMATERIALS_SETTINGS = {**STABLEMATERIALS_GENERATION_SETTINGS, "seed": None}
 
 DISPLAY_LABELS = {
     "mat_stone_wall_material": "stone_wall",
@@ -176,6 +171,7 @@ def is_material_allowed_context_term(term: str) -> bool:
     return bool(words) and words <= MATERIAL_ALLOWED_CONTEXT_WORDS
 
 def preflight_backends(pipeline: Any) -> dict[str, Any]:
+    backend_paths = load_backend_paths(pipeline.root)
     client = WebUIClient(pipeline._runtime_settings(False))
     sd_errors: list[str] = []
     sd_warnings: list[str] = []
@@ -191,13 +187,13 @@ def preflight_backends(pipeline: Any) -> dict[str, Any]:
     except Exception as exc:
         sd_errors.append(f"A1111 API unavailable: {exc}")
     sm_errors: list[str] = []
-    if not STABLEMATERIALS_PYTHON.is_file():
-        sm_errors.append(f"StableMaterials Python not found: {STABLEMATERIALS_PYTHON}")
-    if not STABLEMATERIALS_MODEL_DIR.is_dir():
-        sm_errors.append(f"StableMaterials model directory not found: {STABLEMATERIALS_MODEL_DIR}")
-    if not STABLEMATERIALS_WORKER.is_file():
-        sm_errors.append(f"StableMaterials worker not found: {STABLEMATERIALS_WORKER}")
-    missing = missing_stablematerials_files()
+    if backend_paths.stablematerials_python is None or not backend_paths.stablematerials_python.is_file():
+        sm_errors.append(f"StableMaterials Python not found: {backend_paths.stablematerials_python}")
+    if backend_paths.stablematerials_model_dir is None or not backend_paths.stablematerials_model_dir.is_dir():
+        sm_errors.append(f"StableMaterials model directory not found: {backend_paths.stablematerials_model_dir}")
+    if backend_paths.stablematerials_worker_kind == "script" and not Path(backend_paths.stablematerials_worker).is_file():
+        sm_errors.append(f"StableMaterials worker not found: {backend_paths.stablematerials_worker}")
+    missing = missing_stablematerials_files(backend_paths.stablematerials_model_dir)
     if missing:
         sm_errors.append("StableMaterials local files missing: " + json.dumps(missing[:20], ensure_ascii=False))
     return {
@@ -207,9 +203,9 @@ def preflight_backends(pipeline: Any) -> dict[str, Any]:
             "passed": not sm_errors,
             "errors": sm_errors,
             "warnings": [],
-            "python": str(STABLEMATERIALS_PYTHON),
-            "model_dir": str(STABLEMATERIALS_MODEL_DIR),
-            "worker": str(STABLEMATERIALS_WORKER),
+            "python": str(backend_paths.stablematerials_python),
+            "model_dir": str(backend_paths.stablematerials_model_dir),
+            "worker": backend_paths.stablematerials_worker,
         },
     }
 
@@ -289,23 +285,16 @@ def run_sd15_generation(
                 failures.append({"backend": "sd15_a1111_txt2img", "request_id": "restore_checkpoint", "error": str(exc), "original_checkpoint": original_checkpoint})
     return outputs, failures, timings
 
-def run_stablematerials_generation(paths: dict[str, Path], requests_table: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+def run_stablematerials_generation(pipeline: Any, paths: dict[str, Path], requests_table: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     output_root = paths["stablematerials"]
+    backend_paths = load_backend_paths(pipeline.root)
+    if backend_paths.stablematerials_model_dir is None:
+        raise FileNotFoundError("StableMaterials model directory is not configured in settings/backend_paths.json.")
+    stable_settings = stablematerials_generation_settings(STABLEMATERIALS_GENERATION_SETTINGS, backend_paths)
     request = {
         "schema_version": "d6f_a3_fix4_stablematerials_preview_request_v1",
         "generation": {
-            "width": 512,
-            "height": 512,
-            "num_inference_steps": 4,
-            "guidance_scale": 1.0,
-            "tileable": True,
-            "negative_prompt": None,
-            "custom_pipeline": str(STABLEMATERIALS_MODEL_DIR),
-            "local_files_only": True,
-            "trust_remote_code": False,
-            "unet_subfolder": "unet_lcm",
-            "scheduler": "LCMScheduler",
-            "dtype": "float16",
+            **stable_settings,
         },
         "materials": [
             {
@@ -323,16 +312,16 @@ def run_stablematerials_generation(paths: dict[str, Path], requests_table: list[
     env = os.environ.copy()
     env["HF_HUB_OFFLINE"] = "1"
     env["TRANSFORMERS_OFFLINE"] = "1"
-    command = [
-        str(STABLEMATERIALS_PYTHON),
-        str(STABLEMATERIALS_WORKER),
+    command = stablematerials_worker_command(backend_paths) + [
         "--request",
         str(request_path),
         "--output",
         str(output_root),
+        "--model-dir",
+        str(backend_paths.stablematerials_model_dir),
     ]
     started = time.perf_counter()
-    result = subprocess.run(command, cwd=str(Path(r"I:\Disertation")), env=env, capture_output=True, text=True, timeout=2400)
+    result = subprocess.run(command, cwd=str(backend_paths.stablematerials_working_dir), env=env, capture_output=True, text=True, timeout=2400)
     elapsed = round(time.perf_counter() - started, 3)
     write_text(paths["compiled"] / "stablematerials_worker_stdout.txt", result.stdout)
     write_text(paths["compiled"] / "stablematerials_worker_stderr.txt", result.stderr)

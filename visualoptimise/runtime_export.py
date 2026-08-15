@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from visualoptimise.artifacts import ensure_dirs, normalize_map_ids, read_json, timestamp_for_run, timestamp_iso, write_json, write_text
+from visualoptimise.backend_config import load_backend_paths, ue_copy_destination
 from visualoptimise.runtime_export_base import build_map_package_index, copy_runtime_snapshot, refresh_runtime_data
 from visualoptimise.runtime_validation import validate_no_authoring_files, validate_runtime_data
 
@@ -58,7 +59,7 @@ def run_experiment(
     paths = {name: run_dir / rel for name, rel in RUN_DIRS.items()}
     ensure_dirs(paths)
 
-    command = build_command(map_id, source_run, dry_run, refresh_runtime_data, runtime_texture_backend, include_backend_candidates)
+    command = build_command(pipeline.root, map_id, source_run, dry_run, refresh_runtime_data, runtime_texture_backend, include_backend_candidates)
     write_text(paths["run"] / "command.txt", command)
     write_json(
         paths["run"] / "run_config.json",
@@ -731,7 +732,15 @@ def prepare_runtime_package(
     }
     write_json(map_dir / "manifest.json", manifest)
     map_ids = discover_runtime_maps(runtime_root)
-    index = build_map_package_index(project_root, runtime_root, sorted(map_ids), created_by=ROUND_ID)
+    backend_paths = load_backend_paths(project_root)
+    index = build_map_package_index(
+        project_root,
+        runtime_root,
+        sorted(map_ids),
+        created_by=ROUND_ID,
+        runtime_virtual_root=backend_paths.ue_runtime_virtual_root,
+        ue_copy_destination=ue_copy_destination(backend_paths, project_root),
+    )
     write_json(runtime_root / "map_package_index.json", index)
 
 
@@ -825,6 +834,7 @@ def merge_validations(schema_version: str, validations: list[dict[str, Any]]) ->
 
 
 def build_runtime_export_manifest(project_root: Path, run_dir: Path, source_run: Path, map_id: str, runtime_texture_backend: str) -> dict[str, Any]:
+    backend_paths = load_backend_paths(project_root)
     return {
         "schema_version": "d6g_a2_runtime_data_export_manifest_v1",
         "created_at": timestamp_iso(),
@@ -835,7 +845,7 @@ def build_runtime_export_manifest(project_root: Path, run_dir: Path, source_run:
         "runtime_texture_backend": runtime_texture_backend,
         "selected_backend_is_exposed_via_textures": True,
         "backend_candidates_are_packaged_for_future_ue_switching": True,
-        "ue_copy_destination": str(project_root.parent / "VisualOptimizationUE" / "Content" / "VisualOptimization" / "RuntimeData"),
+        "ue_copy_destination": str(ue_copy_destination(backend_paths, project_root)),
         "llm_calls": 0,
         "sd_webui_generation_calls": 0,
         "stablematerials_generation_calls": 0,
@@ -843,7 +853,8 @@ def build_runtime_export_manifest(project_root: Path, run_dir: Path, source_run:
 
 
 def build_copy_instructions(project_root: Path, runtime_package_path: Path, dry_run: bool) -> str:
-    destination = project_root.parent / "VisualOptimizationUE" / "Content" / "VisualOptimization" / "RuntimeData"
+    backend_paths = load_backend_paths(project_root)
+    destination = ue_copy_destination(backend_paths, project_root)
     if dry_run:
         return (
             "# D6G-A2 Copy Instructions (Dry Run)\n\n"
@@ -914,7 +925,7 @@ def build_summary(
         "stablematerials_generation_calls": 0,
         "missing_selected_files": material_selection.get("errors", []),
         "validation_passed": validation_passed,
-        "copy_to_ue_path": str(project_root.parent / "VisualOptimizationUE" / "Content" / "VisualOptimization" / "RuntimeData"),
+        "copy_to_ue_path": str(ue_copy_destination(load_backend_paths(project_root), project_root)),
         "copy_to_ue_instructions": str(copy_instructions_path),
         "summary_path": str(summary_path),
         "report_path": str(report_path),
@@ -982,7 +993,15 @@ def refresh_runtime_data_fn(project_root: Path, runtime_package_path: Path, targ
             shutil.rmtree(target_map_dir)
         shutil.copytree(source_map_dir, target_map_dir)
     map_ids = sorted(discover_runtime_maps(target_runtime_data))
-    index = build_map_package_index(project_root, target_runtime_data, map_ids, created_by=ROUND_ID)
+    backend_paths = load_backend_paths(project_root)
+    index = build_map_package_index(
+        project_root,
+        target_runtime_data,
+        map_ids,
+        created_by=ROUND_ID,
+        runtime_virtual_root=backend_paths.ue_runtime_virtual_root,
+        ue_copy_destination=ue_copy_destination(backend_paths, project_root),
+    )
     write_json(target_runtime_data / "map_package_index.json", index)
     write_json(
         target_runtime_data / "runtime_data_refresh_manifest.json",
@@ -998,6 +1017,7 @@ def refresh_runtime_data_fn(project_root: Path, runtime_package_path: Path, targ
 
 
 def build_command(
+    project_root: Path,
     map_id: str,
     source_run: Path,
     dry_run: bool,
@@ -1005,9 +1025,11 @@ def build_command(
     runtime_texture_backend: str,
     include_backend_candidates: bool,
 ) -> str:
+    backend_paths = load_backend_paths(project_root)
+    python_executable = str(backend_paths.dissertation_python or "python")
     command = (
-        r"I:\MiniConda3\envs\dissertation\python.exe "
-        r"I:\Disertation\VisualOptimise\run_main_pipeline.py "
+        f"{python_executable} "
+        f"{project_root / 'run_main_pipeline.py'} "
         f"--map {map_id} --export-runtime-data "
         f"--reuse-materials-from \"{source_run}\" "
         f"--runtime-texture-backend {runtime_texture_backend}"

@@ -14,6 +14,19 @@ I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_mai
 
 This does not call DeepSeek, WebUI, StableMaterials, or refresh RuntimeData.
 
+## Submission Hardening Validation
+
+```powershell
+I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --b3-submission-hardening-validation
+```
+
+This creates a B3 validation run under `outputs/runs`. It performs syntax
+validation, import isolation audit, path hardcode audit, structure equivalence
+audit, behavior equivalence audit, full dry-run validation, export-only SD1.5
+validation, and a StableMaterials backend-switch export validation using
+`--no-refresh-runtime-data`. It does not call DeepSeek, does not generate new
+images, and does not modify UE files.
+
 ## Generate Materials Only
 
 ```powershell
@@ -46,6 +59,12 @@ I:\Disertation\VisualOptimise\generated\ue_ready\runtime_data
 Use `--no-refresh-runtime-data` for backend-switch validation that should not
 overwrite the default latest package.
 
+To export using StableMaterials candidates without replacing latest:
+
+```powershell
+I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --export-runtime-data --reuse-materials-from <successful_material_run> --runtime-texture-backend stablematerials --no-refresh-runtime-data
+```
+
 ## Full Pipeline
 
 ```powershell
@@ -71,3 +90,21 @@ Python for length only. Python does not semantically trim StableMaterials text.
 If StableMaterials prompt length remains over budget after LLM2 retries, the
 StableMaterials backend is downgraded to a warning while SD1.5 remains eligible
 for default RuntimeData export.
+
+## Copy RuntimeData To UE
+
+RuntimeData is generated first into:
+
+```text
+I:\Disertation\VisualOptimise\generated\ue_ready\runtime_data
+```
+
+The configured UE copy destination is:
+
+```text
+I:\Disertation\VisualOptimizationUE\Content\VisualOptimization\RuntimeData
+```
+
+The `VisualOptimization/RuntimeData` content path is retained for compatibility
+with the existing UE loader. Edit `settings/backend_paths.json` if the UE project
+is moved.

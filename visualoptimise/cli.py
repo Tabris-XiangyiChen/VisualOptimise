@@ -7,6 +7,7 @@ from pathlib import Path
 
 from visualoptimise.config_loader import load_defaults
 from visualoptimise.orchestrator import MainPipelineRequest, run_main_pipeline
+from visualoptimise.submission_validation import run_b3_submission_validation
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--full", action="store_true", help="Run material generation followed by RuntimeData export.")
     parser.add_argument("--generate-materials", action="store_true", help="Run material generation only.")
     parser.add_argument("--export-runtime-data", action="store_true", help="Export RuntimeData from an existing material run.")
+    parser.add_argument("--b3-submission-hardening-validation", action="store_true", help="Run submission hardening, config, audit, and equivalence validation.")
     parser.add_argument("--reuse-materials-from", help="Existing successful material generation run for export-only mode.")
     parser.add_argument("--runtime-texture-backend", choices=["sd15", "stablematerials"], default=defaults.get("runtime_texture_backend", "sd15"))
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not call LLMs, image backends, or refresh RuntimeData.")
@@ -48,9 +50,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-refresh-runtime-data", action="store_true", help="Do not refresh generated/ue_ready/runtime_data.")
     args = parser.parse_args(argv)
 
-    selected_modes = [args.full, args.generate_materials, args.export_runtime_data]
+    selected_modes = [args.full, args.generate_materials, args.export_runtime_data, args.b3_submission_hardening_validation]
     if sum(1 for value in selected_modes if value) != 1:
-        parser.error("Choose exactly one of --full, --generate-materials, or --export-runtime-data.")
+        parser.error("Choose exactly one of --full, --generate-materials, --export-runtime-data, or --b3-submission-hardening-validation.")
+    if args.b3_submission_hardening_validation:
+        try:
+            run_dir = run_b3_submission_validation(PROJECT_ROOT)
+        except Exception as exc:
+            print(f"VisualOptimise B3 submission hardening failed: {exc}")
+            return 1
+        print(f"VisualOptimise B3 submission hardening complete: {run_dir}")
+        return 0
     map_ids = args.maps if args.maps else [args.map_id]
     if not map_ids:
         parser.error("At least one map id is required.")

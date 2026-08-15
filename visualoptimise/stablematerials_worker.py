@@ -29,9 +29,6 @@ from PIL import Image, ImageStat
 from safetensors import safe_open
 
 
-ROOT = Path(r"I:\Disertation")
-MODEL_PATH = ROOT / "StableMaterials"
-PIPELINE_PATH = MODEL_PATH / "pipeline.py"
 MAP_NAMES = ["basecolor", "normal", "height", "roughness", "metallic"]
 RGB_MAPS = {"basecolor", "normal"}
 GRAYSCALE_MAPS = {"height", "roughness", "metallic"}
@@ -93,12 +90,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Shared StableMaterials LCM worker")
     parser.add_argument("--request", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--model-dir", help="Local StableMaterials model directory. Overrides request generation custom_pipeline.")
     args = parser.parse_args(argv)
     request_path = Path(args.request)
     output_root = Path(args.output)
     report_path = output_root / "stablematerials_worker_report.json"
     output_root.mkdir(parents=True, exist_ok=True)
     request = json.loads(request_path.read_text(encoding="utf-8"))
+    model_path = resolve_model_path(args.model_dir, request)
+    pipeline_path = model_path / "pipeline.py"
     report: dict[str, Any] = {
         "status": "started",
         "python_executable": sys.executable,
@@ -106,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         "platform": platform.platform(),
         "torch_version": torch.__version__,
         "torch_cuda_version": torch.version.cuda,
-        "model_path": str(MODEL_PATH),
-        "custom_pipeline": str(MODEL_PATH),
+        "model_path": str(model_path),
+        "custom_pipeline": str(model_path),
         "trust_remote_code": False,
         "local_files_only": True,
         "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
@@ -124,21 +124,21 @@ def main(argv: list[str] | None = None) -> int:
     }
     started = time.perf_counter()
     try:
-        report["preflight_model_files"] = validate_model_files()
-        report["local_pipeline_sha256"] = sha256_file(PIPELINE_PATH)
+        report["preflight_model_files"] = validate_model_files(model_path)
+        report["local_pipeline_sha256"] = sha256_file(pipeline_path)
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA is not available for StableMaterials LCM generation.")
         torch.cuda.reset_peak_memory_stats()
         with NetworkBlocker() as network:
             unet = UNet2DConditionModel.from_pretrained(
-                MODEL_PATH,
+                model_path,
                 subfolder="unet_lcm",
                 local_files_only=True,
                 torch_dtype=torch.float16,
             )
             pipe = DiffusionPipeline.from_pretrained(
-                MODEL_PATH,
-                custom_pipeline=str(MODEL_PATH),
+                model_path,
+                custom_pipeline=str(model_path),
                 local_files_only=True,
                 trust_remote_code=False,
                 unet=unet,
@@ -205,13 +205,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if report["status"] == "passed" else 1
 
 
-def validate_model_files() -> list[dict[str, Any]]:
+def resolve_model_path(cli_model_dir: str | None, request: dict[str, Any]) -> Path:
+    value = (
+        cli_model_dir
+        or request.get("generation", {}).get("custom_pipeline")
+        or os.environ.get("STABLEMATERIALS_MODEL_DIR")
+    )
+    if not value:
+        raise ValueError("StableMaterials model directory is not configured.")
+    return Path(value).resolve()
+
+
+def validate_model_files(model_path: Path) -> list[dict[str, Any]]:
     missing = []
     checked = []
-    if not MODEL_PATH.is_dir():
-        missing.append(str(MODEL_PATH))
+    if not model_path.is_dir():
+        missing.append(str(model_path))
     for relative_file in REQUIRED_FILES:
-        path = MODEL_PATH / relative_file
+        path = model_path / relative_file
         if not path.is_file() or path.stat().st_size <= 0:
             missing.append(relative_file)
             continue

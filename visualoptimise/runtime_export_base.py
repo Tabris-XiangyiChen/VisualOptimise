@@ -64,7 +64,15 @@ def build_runtime_map_package(
     return manifest
 
 
-def build_map_package_index(project_root: Path, runtime_root: Path, map_ids: list[str], created_by: str, warnings: list[str] | None = None) -> dict[str, Any]:
+def build_map_package_index(
+    project_root: Path,
+    runtime_root: Path,
+    map_ids: list[str],
+    created_by: str,
+    warnings: list[str] | None = None,
+    runtime_virtual_root: str = "VisualOptimization/RuntimeData",
+    ue_copy_destination: Path | None = None,
+) -> dict[str, Any]:
     maps = []
     for map_id in sorted(map_ids):
         maps.append(
@@ -83,9 +91,9 @@ def build_map_package_index(project_root: Path, runtime_root: Path, map_ids: lis
         "schema_version": MAP_PACKAGE_INDEX_SCHEMA,
         "created_at": timestamp_iso(),
         "created_by": created_by,
-        "runtime_root": "VisualOptimization/RuntimeData",
+        "runtime_root": runtime_virtual_root,
         "runtime_root_absolute": str(runtime_root),
-        "ue_copy_destination": str(project_root.parent / "VisualOptimizationUE" / "Content" / "VisualOptimization" / "RuntimeData"),
+        "ue_copy_destination": str(ue_copy_destination) if ue_copy_destination is not None else None,
         "maps": maps,
         "warnings": sorted(set(warnings or [])),
     }

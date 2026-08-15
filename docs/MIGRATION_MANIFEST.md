@@ -35,6 +35,18 @@ strings, default source-run removal, and self-contained orchestration.
 - Added `ProductionPipelineContext` so runtime modules no longer require `VisualGenerationPipeline`.
 - Added facade modules for production-facing names without changing extracted behavior.
 - Added root `README.md` and docs.
+- Added `visualoptimise/backend_config.py`; WebUI, StableMaterials, and UE copy
+  destination paths now resolve from `settings/backend_paths.json` while keeping
+  the same default values in configuration.
+- Added `visualoptimise/submission_validation.py` for D6G-B3 import isolation,
+  path hardcode, structure equivalence, behavior equivalence, and documentation
+  validation.
+
+## Compatibility Identifiers
+
+The D6F/D6G names retained in schemas, summaries, and report filenames are
+compatibility identifiers for validated research-stage behavior. They are not
+imports or runtime dependencies on old experiment packages.
 
 ## Intentional Non-Copies
 

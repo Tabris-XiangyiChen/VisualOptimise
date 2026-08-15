@@ -16,6 +16,7 @@ from visualoptimise import prompt_generation as mainline_prompting
 from visualoptimise import preview_generation
 from visualoptimise import semantic_planning as material_planning
 from visualoptimise.artifacts import ensure_dirs, normalize_map_ids, read_json, timestamp_for_run, timestamp_iso, write_json, write_text
+from visualoptimise.backend_config import load_backend_paths
 from visualoptimise.llm_artifacts import build_json_chat_payload, parse_json_response
 
 from .material_generation_report import build_markdown_report
@@ -75,7 +76,7 @@ def run_experiment(
     ensure_dirs(paths)
     generation_config = resolve_generation_seed_config(pipeline.root, seeds, images_per_material)
     resolved_seeds = generation_config["seeds"]
-    command = build_command(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material)
+    command = build_command(pipeline.root, map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material)
     write_text(paths["run"] / "command.txt", command)
     write_json(paths["run"] / "run_config.json", build_run_config(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, generation_config))
     write_json(paths["run"] / "generation_seed_config.json", generation_config)
@@ -136,7 +137,7 @@ def run_experiment(
         failed_items.extend(sd_failures)
         timings.extend(sd_timings)
         if stablematerials_enabled:
-            sm_outputs, sm_failures, sm_timings = preview_generation.run_stablematerials_generation(paths, sm_requests)
+            sm_outputs, sm_failures, sm_timings = preview_generation.run_stablematerials_generation(pipeline, paths, sm_requests)
             non_blocking_failed_items.extend({**item, "non_blocking": True} for item in sm_failures)
             timings.extend(sm_timings)
         else:
@@ -199,6 +200,7 @@ def paths_for_run(run_dir: Path) -> dict[str, Path]:
 
 
 def build_command(
+    project_root: Path,
     map_id: str,
     dry_run: bool,
     llm_max_attempts: int,
@@ -206,9 +208,11 @@ def build_command(
     cli_seeds: list[int] | None,
     cli_images_per_material: int | None,
 ) -> str:
+    backend_paths = load_backend_paths(project_root)
+    python_executable = str(backend_paths.dissertation_python or "python")
     command = (
-        r"I:\MiniConda3\envs\dissertation\python.exe "
-        rf"I:\Disertation\VisualOptimise\run_main_pipeline.py --map {map_id} "
+        f"{python_executable} "
+        f"{project_root / 'run_main_pipeline.py'} --map {map_id} "
         r"--generate-materials --semantic-mode llm "
         r"--material-mode preview-only "
         f"--llm-max-attempts {llm_max_attempts} --prompt-llm-max-attempts {prompt_llm_max_attempts}"

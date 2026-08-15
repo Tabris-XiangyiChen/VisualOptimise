@@ -8,6 +8,7 @@ from typing import Any
 
 from visualoptimise import material_generation_pipeline, runtime_export
 from visualoptimise.artifacts import ensure_dirs, read_json, timestamp_for_run, timestamp_iso, write_json, write_text
+from visualoptimise.backend_config import backend_paths_to_json, load_backend_paths, ue_copy_destination, webui_settings
 from visualoptimise.config_loader import load_settings
 from visualoptimise.reports import build_report, build_summary, material_generation_summary, runtime_export_summary
 
@@ -47,9 +48,11 @@ class ProductionPipelineContext:
         self.config_dir = self.root / "config"
         self.data_dir = self.root / "data"
         self.settings = load_settings(self.root)
+        self.backend_paths = load_backend_paths(self.root)
 
     def _runtime_settings(self, dry_run: bool = False) -> dict[str, Any]:
         settings = dict(self.settings)
+        settings.update(webui_settings(self.backend_paths))
         settings["_dry_run"] = dry_run
         return settings
 
@@ -140,7 +143,7 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
         material_summary=material_summary,
         export_summary=export_summary,
         stage_plan=stage_plan,
-        copy_to_ue_path=request.project_root.parent / "VisualOptimizationUE" / "Content" / "VisualOptimization" / "RuntimeData",
+        copy_to_ue_path=ue_copy_destination(pipeline.backend_paths, request.project_root),
     )
     write_json(paths["reports"] / "main_pipeline_summary.json", summary)
     write_text(paths["reports"] / "main_pipeline_report.md", build_report(summary))
@@ -224,6 +227,7 @@ def request_to_json(request: MainPipelineRequest) -> dict[str, Any]:
         "reuse_materials_from": str(request.reuse_materials_from) if request.reuse_materials_from else None,
         "seeds": request.seeds,
         "images_per_material": request.images_per_material,
+        "backend_paths": backend_paths_to_json(load_backend_paths(request.project_root)),
     }
 
 
@@ -237,8 +241,10 @@ def build_reference(run_dir: Path | None, stage: str) -> dict[str, Any]:
 
 
 def build_command(request: MainPipelineRequest) -> str:
+    backend_paths = load_backend_paths(request.project_root)
+    python_executable = str(backend_paths.dissertation_python or "python")
     parts = [
-        r"I:\MiniConda3\envs\dissertation\python.exe",
+        python_executable,
         str(request.project_root / "run_main_pipeline.py"),
         "--map",
         request.map_id,
