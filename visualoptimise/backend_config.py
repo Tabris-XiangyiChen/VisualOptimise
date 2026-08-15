@@ -47,7 +47,7 @@ def load_backend_paths(project_root: Path) -> BackendPaths:
     stablematerials_model_dir = _optional_path(stable.get("model_dir") or raw.get("stablematerials_model_dir"))
     worker = str(stable.get("worker") or raw.get("stablematerials_worker") or "visualoptimise.stablematerials_worker")
     worker_kind = _worker_kind(worker)
-    working_dir = _optional_path(stable.get("working_dir") or raw.get("stablematerials_working_dir")) or project_root.parent
+    working_dir = _optional_path(stable.get("working_dir") or raw.get("stablematerials_working_dir")) or project_root
     ue_destination = _optional_path(ue.get("copy_destination") or raw.get("ue_runtime_data_destination"))
     ue_virtual_root = str(ue.get("virtual_root") or raw.get("ue_runtime_virtual_root") or DEFAULT_UE_RUNTIME_VIRTUAL_ROOT)
     return BackendPaths(

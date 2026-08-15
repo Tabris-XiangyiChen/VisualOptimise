@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seeds", nargs="*", help="Generation seeds for material generation mode.")
     parser.add_argument("--images-per-material", type=int, help="Random images per material when seeds are not specified.")
     parser.add_argument("--no-refresh-runtime-data", action="store_true", help="Do not refresh generated/ue_ready/runtime_data.")
+    parser.add_argument("--no-stablematerials", action="store_true", help="Skip StableMaterials generation and package no StableMaterials candidates.")
     args = parser.parse_args(argv)
 
     selected_modes = [args.full, args.generate_materials, args.export_runtime_data, args.b3_submission_hardening_validation]
@@ -72,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     run_dirs: list[Path] = []
     try:
         for map_id in map_ids:
+            print(f"[VisualOptimise] Starting {mode} for map {map_id}...")
             request = MainPipelineRequest(
                 project_root=PROJECT_ROOT,
                 map_id=map_id,
@@ -86,8 +88,10 @@ def main(argv: list[str] | None = None) -> int:
                 reuse_materials_from=reuse_materials_from,
                 seeds=seeds,
                 images_per_material=args.images_per_material,
+                stablematerials_enabled=bool(defaults.get("stablematerials_enabled", True)) and not args.no_stablematerials,
             )
             run_dirs.append(run_main_pipeline(request))
+            print(f"[VisualOptimise] Finished {mode} for map {map_id}: {run_dirs[-1]}")
     except Exception as exc:
         print(f"VisualOptimise pipeline failed: {exc}")
         return 1

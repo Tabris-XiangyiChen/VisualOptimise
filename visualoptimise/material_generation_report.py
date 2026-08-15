@@ -1,4 +1,4 @@
-"""Markdown report builder for D6F-A4."""
+"""Markdown report builder for the material generation stage."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
     stability_rows = analysis.get("stability_observation", {}).get("rows", [])
 
     lines: list[str] = [
-        "# D6F-A4 Full Two-LLM Material Generation Preview",
+        "# Material Generation Preview",
         "",
         "## Overview",
         "",
@@ -30,13 +30,13 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
         f"- UE modified: `{summary.get('ue_modified')}`",
         f"- Native pass without posthoc recheck: `{summary.get('native_run_passed_without_posthoc_recheck')}`",
         "",
-        "## Component Reuse",
+        "## Pipeline Components",
         "",
-        f"- Fix1 LLM1/resolver reused: `{summary.get('fix1_llm1_resolver_reused')}`",
-        f"- Fix3 prompt contract reused: `{summary.get('fix3_prompt_contract_reused')}`",
-        f"- Fix3 patched validator reused: `{summary.get('fix3_patched_validator_reused')}`",
-        f"- Fix4 Plan A generation reused: `{summary.get('fix4_plan_a_generation_reused')}`",
-        f"- Plan B run: `{summary.get('plan_b_run')}`",
+        f"- Semantic planner/resolver active: `{summary.get('semantic_planner_resolver_active')}`",
+        f"- Material prompt contract active: `{summary.get('material_prompt_contract_active')}`",
+        f"- Prompt validator active: `{summary.get('prompt_validator_active')}`",
+        f"- SD1.5 Plan A generation active: `{summary.get('sd15_plan_a_generation_active')}`",
+        f"- Alternate Plan B run: `{summary.get('alternate_plan_b_run')}`",
         "",
         "## Validation",
         "",
@@ -112,7 +112,7 @@ def build_markdown_report(summary: dict[str, Any]) -> str:
             "",
             "## Interpretation Boundary",
             "",
-            "This is an integration preview, not a prompt tuning round. SD1.5 uses Plan A only: Fix3 positive prompts and Fix3 negative prompts as-is. StableMaterials is included as a parallel backend preview. Manual visual contact-sheet review remains required for art-direction conclusions.",
+            "This is an integration preview, not a prompt tuning round. SD1.5 uses the validated Plan A prompt path. StableMaterials is included as a parallel optional backend preview when enabled. Manual visual contact-sheet review remains required for art-direction conclusions.",
             "",
             "## Report Files",
             "",

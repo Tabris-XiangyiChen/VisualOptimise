@@ -23,11 +23,12 @@ Export an existing successful material run into UE-copyable RuntimeData:
 I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --export-runtime-data --reuse-materials-from <successful_material_run>
 ```
 
-Run the full pipeline only after WebUI, StableMaterials, and DeepSeek access are
-ready:
+Run the full pipeline after WebUI and DeepSeek access are ready. StableMaterials
+is optional; use `--no-stablematerials` to keep SD1.5 as the only image backend:
 
 ```powershell
 I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --full
+I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --full --no-stablematerials
 ```
 
 The UE-copyable package is written to `generated/ue_ready/runtime_data`, and

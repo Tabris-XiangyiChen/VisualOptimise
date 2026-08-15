@@ -1,6 +1,6 @@
-"""D6G-A2 Material Manifest and UE RuntimeData export integration.
+"""Material Manifest and UE RuntimeData export integration.
 
-This round is export-only. It reads a successful D6F-A4/D6G material
+This stage is export-only. It reads a successful material
 generation preview run, selects deterministic material candidates, and writes a
 UE-copyable RuntimeData package without calling LLMs or image backends.
 """
@@ -17,9 +17,17 @@ from visualoptimise.runtime_export_base import build_map_package_index, copy_run
 from visualoptimise.runtime_validation import validate_no_authoring_files, validate_runtime_data
 
 
-ROUND_ID = "d6g_a2_material_manifest_runtime_export"
-RUN_SUFFIX = ROUND_ID
-SUMMARY_SCHEMA = "d6g_a2_material_manifest_runtime_export_summary_v1"
+STAGE_ID = "runtime_export"
+COMPATIBILITY_ID = "d6g_a2_material_manifest_runtime_export"
+MATERIAL_GENERATION_STAGE_ID = "material_generation"
+MATERIAL_GENERATION_COMPATIBILITY_ID = "d6f_a4_full_two_llm_material_generation_preview"
+ROUND_ID = STAGE_ID
+RUN_SUFFIX = STAGE_ID
+SUMMARY_SCHEMA = "runtime_export_summary_v1"
+SUMMARY_FILENAME = "runtime_export_summary.json"
+REPORT_FILENAME = "runtime_export_report.md"
+LEGACY_SUMMARY_FILENAME = f"{COMPATIBILITY_ID}_summary.json"
+LEGACY_REPORT_FILENAME = f"{COMPATIBILITY_ID}_report.md"
 MATERIAL_MANIFEST_SCHEMA = "material_manifest_v1"
 RUNTIME_MAP_PACKAGE_SCHEMA = "runtime_map_package_v1"
 RESOLVED_TILESET_EXPORT_SCHEMA = "resolved_tileset_v1"
@@ -49,7 +57,7 @@ def run_experiment(
 ) -> Path:
     maps = normalize_map_ids(map_ids, fallback_map_id)
     if len(maps) != 1:
-        raise ValueError("D6G-A2 exports one material-generation map package per run.")
+        raise ValueError("Runtime export handles one material-generation map package per run.")
     map_id = maps[0]
     if runtime_texture_backend not in SUPPORTED_BACKENDS:
         raise ValueError(f"Unsupported runtime texture backend: {runtime_texture_backend}.")
@@ -58,6 +66,7 @@ def run_experiment(
     run_dir = pipeline.output_dir / f"{timestamp_for_run()}_{map_id}_{RUN_SUFFIX}"
     paths = {name: run_dir / rel for name, rel in RUN_DIRS.items()}
     ensure_dirs(paths)
+    print(f"[VisualOptimise] Runtime export: using source run {source_run}")
 
     command = build_command(pipeline.root, map_id, source_run, dry_run, refresh_runtime_data, runtime_texture_backend, include_backend_candidates)
     write_text(paths["run"] / "command.txt", command)
@@ -66,6 +75,9 @@ def run_experiment(
         {
             "schema_version": "d6g_a2_run_config_v1",
             "created_at": timestamp_iso(),
+            "stage_id": STAGE_ID,
+            "round_id": ROUND_ID,
+            "compatibility_id": COMPATIBILITY_ID,
             "map_id": map_id,
             "dry_run": dry_run,
             "source_run": str(source_run),
@@ -125,6 +137,7 @@ def run_experiment(
         runtime_package_path = paths["runtime"]
         runtime_snapshot_path = None
     else:
+        print(f"[VisualOptimise] Runtime export: packaging RuntimeData for {map_id}")
         runtime_package_path = paths["runtime"]
         prepare_runtime_package(
             project_root=pipeline.root,
@@ -154,6 +167,7 @@ def run_experiment(
             target_runtime_data = pipeline.root / "generated" / "ue_ready" / "runtime_data"
             refresh_runtime_data_fn(pipeline.root, runtime_package_path, target_runtime_data)
             generated_runtime_data_refreshed = True
+            print(f"[VisualOptimise] Runtime export: refreshed latest RuntimeData at {target_runtime_data}")
         runtime_package_created = True
 
     prior_leak_audit = build_prior_leak_audit(source)
@@ -185,12 +199,15 @@ def run_experiment(
         validation_passed=validation_passed,
         dry_run=dry_run,
     )
-    write_json(paths["reports"] / "d6g_a2_material_manifest_runtime_export_summary.json", summary)
-    write_text(paths["reports"] / "d6g_a2_material_manifest_runtime_export_report.md", build_report(summary, material_selection))
+    report = build_report(summary, material_selection)
+    write_json(paths["reports"] / SUMMARY_FILENAME, summary)
+    write_text(paths["reports"] / REPORT_FILENAME, report)
+    write_json(paths["reports"] / LEGACY_SUMMARY_FILENAME, summary)
+    write_text(paths["reports"] / LEGACY_REPORT_FILENAME, report)
     write_json(paths["run"] / "key_outputs_index.json", build_key_outputs_index(paths, summary))
 
     if summary["status"] != "passed":
-        raise RuntimeError(f"D6G-A2 export failed. See {summary['summary_path']}")
+        raise RuntimeError(f"Runtime export failed. See {summary['summary_path']}")
     return run_dir
 
 
@@ -198,12 +215,13 @@ def select_source_run(output_dir: Path, map_id: str, reuse_materials_from: Path 
     if reuse_materials_from:
         return reuse_materials_from.resolve()
     candidates = sorted(
-        output_dir.glob(f"*_{map_id}_d6f_a4_full_two_llm_material_generation_preview"),
+        list(output_dir.glob(f"*_{map_id}_{MATERIAL_GENERATION_STAGE_ID}"))
+        + list(output_dir.glob(f"*_{map_id}_{MATERIAL_GENERATION_COMPATIBILITY_ID}")),
         key=lambda path: path.name,
         reverse=True,
     )
     for candidate in candidates:
-        summary_path = candidate / "10_reports" / "d6f_a4_full_two_llm_material_generation_preview_summary.json"
+        summary_path = material_generation_summary_path(candidate)
         if summary_path.is_file() and read_json(summary_path).get("status") == "passed":
             return candidate
     raise FileNotFoundError(
@@ -214,8 +232,9 @@ def select_source_run(output_dir: Path, map_id: str, reuse_materials_from: Path 
 
 def load_and_validate_source_run(source_run: Path, map_id: str) -> dict[str, Any]:
     source_run = source_run.resolve()
+    source_summary_path = material_generation_summary_path(source_run)
     required = {
-        "summary": source_run / "10_reports" / "d6f_a4_full_two_llm_material_generation_preview_summary.json",
+        "summary": source_summary_path,
         "map_facts": source_run / "01_map_facts" / "map_facts_v2.json",
         "llm_tile_material_plan": source_run / "02_llm1_material_plan" / "llm_tile_material_plan_v2.json",
         "resolved_tileset": source_run / "03_python_resolver" / "resolved_tileset_v2.json",
@@ -258,6 +277,14 @@ def load_and_validate_source_run(source_run: Path, map_id: str) -> dict[str, Any
     if errors:
         raise RuntimeError(f"Source run validation failed: {errors}")
     return payload
+
+
+def material_generation_summary_path(source_run: Path) -> Path:
+    reports_dir = source_run / "10_reports"
+    preferred = reports_dir / "material_generation_summary.json"
+    if preferred.is_file():
+        return preferred
+    return reports_dir / f"{MATERIAL_GENERATION_COMPATIBILITY_ID}_summary.json"
 
 
 def build_material_selection(
@@ -347,7 +374,7 @@ def build_material_selection(
                     "display_label": record["display_label"],
                     "selected": record["selected"],
                     "sd15_candidates": record["sd15_candidates"],
-                    "stablematerials_candidates": record["stablematerials_candidates"],
+                    **({"stablematerials_candidates": record["stablematerials_candidates"]} if record["stablematerials_candidates"] else {}),
                 }
                 for record in records
             ],
@@ -449,7 +476,7 @@ def convert_resolved_tileset_for_runtime(
                 "selected_mesh_role_tags": tile.get("selected_mesh_role_tags", []),
                 "tile_count_in_map": symbol_counts.get(tile.get("symbol"), 0),
                 "inference": {
-                    "source": "d6f_a4_resolved_tileset_v2",
+                    "source": "material_generation_resolved_tileset_v2",
                     "tile_semantics": tile.get("tile_semantics"),
                     "canonical_material_id": tile.get("canonical_material_id"),
                     "material_identity_coarse": material.get("material_identity_coarse"),
@@ -462,8 +489,8 @@ def convert_resolved_tileset_for_runtime(
         "map_id": map_id,
         "source_map_package": str(Path("data") / "maps" / map_id),
         "solver": {
-            "name": "d6g_a2_dynamic_tileset_runtime_adapter",
-            "version": "d6g_a2_v1",
+            "name": "dynamic_tileset_runtime_adapter",
+            "version": "runtime_export_v1",
             "source_schema": resolved_tileset_v2.get("schema_version"),
             "llm_calls": 0,
             "sd_calls": 0,
@@ -509,11 +536,17 @@ def build_material_manifest(
     runtime_texture_backend: str,
 ) -> dict[str, Any]:
     materials = []
+    stablematerials_candidates_available = any(record["stablematerials_candidates"] for record in material_selection["records"])
     for record in material_selection["records"]:
         source_material = record["source_material"]
         selected = record["selected"] or {}
         textures = selected_runtime_textures(record)
         backend_candidates = build_manifest_backend_candidates(record)
+        compiled_prompt_refs = {
+            "sd15": prompt_ref(compiled_sd15, record["material_slot_id"]),
+        }
+        if record["stablematerials_candidates"]:
+            compiled_prompt_refs["stablematerials_lcm"] = prompt_ref(compiled_stablematerials, record["material_slot_id"])
         materials.append(
             {
                 "material_slot_id": record["material_slot_id"],
@@ -547,30 +580,29 @@ def build_material_manifest(
                     "raw_material_clues": source_material.get("raw_material_clues", []),
                     "context_clues_for_prompt_llm": source_material.get("context_clues_for_prompt_llm", []),
                 },
-                "compiled_prompt_refs": {
-                    "sd15": prompt_ref(compiled_sd15, record["material_slot_id"]),
-                    "stablematerials_lcm": prompt_ref(compiled_stablematerials, record["material_slot_id"]),
-                },
+                "compiled_prompt_refs": compiled_prompt_refs,
                 "selection_policy": SELECTION_POLICY,
             }
         )
+    source_files = {
+        "source_run": str(source_run),
+        "resolved_materials_v2": "03_python_resolver/resolved_materials_v2.json",
+        "compiled_sd15_prompts": "06_compiled_prompts/compiled_sd15_prompts_v4.json",
+        "material_mode": "export-only",
+        "runtime_source_backend": runtime_texture_backend,
+        "selection_policy": SELECTION_POLICY,
+        "llm_calls": 0,
+        "sd_calls": 0,
+        "stablematerials_calls": 0,
+        "new_image_generation": False,
+    }
+    if stablematerials_candidates_available:
+        source_files["compiled_stablematerials_prompts"] = "06_compiled_prompts/compiled_stablematerials_prompts_v4.json"
     return {
         "schema_version": MATERIAL_MANIFEST_SCHEMA,
         "map_id": map_id,
         "created_at": timestamp_iso(),
-        "source": {
-            "source_run": str(source_run),
-            "resolved_materials_v2": "03_python_resolver/resolved_materials_v2.json",
-            "compiled_sd15_prompts": "06_compiled_prompts/compiled_sd15_prompts_v4.json",
-            "compiled_stablematerials_prompts": "06_compiled_prompts/compiled_stablematerials_prompts_v4.json",
-            "material_mode": "export-only",
-            "runtime_source_backend": runtime_texture_backend,
-            "selection_policy": SELECTION_POLICY,
-            "llm_calls": 0,
-            "sd_calls": 0,
-            "stablematerials_calls": 0,
-            "new_image_generation": False,
-        },
+        "source": source_files,
         "materials": sorted(materials, key=lambda item: item["material_slot_id"]),
         "warnings": material_selection.get("warnings", []),
     }
@@ -594,7 +626,7 @@ def selected_runtime_textures(record: dict[str, Any]) -> dict[str, str]:
 
 def build_manifest_backend_candidates(record: dict[str, Any]) -> dict[str, Any]:
     slot = record["material_slot_id"]
-    return {
+    candidates = {
         "sd15": {
             "selected_seed": first_seed(record["sd15_candidates"]),
             "candidates": [
@@ -606,7 +638,9 @@ def build_manifest_backend_candidates(record: dict[str, Any]) -> dict[str, Any]:
                 for item in record["sd15_candidates"]
             ],
         },
-        "stablematerials": {
+    }
+    if record["stablematerials_candidates"]:
+        candidates["stablematerials"] = {
             "selected_seed": first_seed(record["stablematerials_candidates"]),
             "candidates": [
                 {
@@ -621,8 +655,8 @@ def build_manifest_backend_candidates(record: dict[str, Any]) -> dict[str, Any]:
                 }
                 for item in record["stablematerials_candidates"]
             ],
-        },
-    }
+        }
+    return candidates
 
 
 def build_tile_references(source_material: dict[str, Any]) -> list[dict[str, Any]]:
@@ -791,8 +825,8 @@ def validate_material_manifest(material_manifest: dict[str, Any], require_runtim
         if selected.get("backend") != material.get("selected_backend"):
             errors.append(f"{slot}: selected backend mismatch.")
         backend_candidates = material.get("backend_candidates", {})
-        if "sd15" not in backend_candidates or "stablematerials" not in backend_candidates:
-            warnings.append(f"{slot}: backend_candidates should include both sd15 and stablematerials.")
+        if "sd15" not in backend_candidates:
+            warnings.append(f"{slot}: backend_candidates should include sd15.")
         if require_runtime_files and material_dir is not None:
             for texture_type, relative in textures.items():
                 if not (material_dir / relative).is_file():
@@ -820,7 +854,7 @@ def build_prior_leak_audit(source: dict[str, Any]) -> dict[str, Any]:
         "old_material_slot_rules_used": False,
         "old_material_slot_evidence_used": False,
         "suggested_prompt_hint_used": False,
-        "note": "D6G-A2 is export-only and reuses the successful source run artifacts without generating new semantic or prompt evidence.",
+        "note": "Runtime export is export-only and reuses successful source run artifacts without generating new semantic or prompt evidence.",
     }
 
 
@@ -838,7 +872,9 @@ def build_runtime_export_manifest(project_root: Path, run_dir: Path, source_run:
     return {
         "schema_version": "d6g_a2_runtime_data_export_manifest_v1",
         "created_at": timestamp_iso(),
+        "stage_id": STAGE_ID,
         "round_id": ROUND_ID,
+        "compatibility_id": COMPATIBILITY_ID,
         "map_id": map_id,
         "run_dir": str(run_dir),
         "source_material_generation_run": str(source_run),
@@ -857,11 +893,11 @@ def build_copy_instructions(project_root: Path, runtime_package_path: Path, dry_
     destination = ue_copy_destination(backend_paths, project_root)
     if dry_run:
         return (
-            "# D6G-A2 Copy Instructions (Dry Run)\n\n"
+            "# RuntimeData Copy Instructions (Dry Run)\n\n"
             "Dry-run did not create a complete RuntimeData package. Run without `--dry-run` first.\n"
         )
     return (
-        "# D6G-A2 Copy Instructions\n\n"
+        "# RuntimeData Copy Instructions\n\n"
         "Copy the contents of this RuntimeData package into the UE project RuntimeData directory.\n\n"
         f"Source package:\n`{runtime_package_path}`\n\n"
         f"UE destination:\n`{destination}`\n\n"
@@ -870,7 +906,7 @@ def build_copy_instructions(project_root: Path, runtime_package_path: Path, dry_
         f"Copy-Item -Path \"{runtime_package_path}\\*\" -Destination \"{destination}\" -Recurse -Force\n"
         "```\n\n"
         "Current UE compatibility path reads `materials/textures/<material_slot_id>/basecolor.png`.\n"
-        "D6G-A2 also packages `materials/backend_candidates/` for future backend switching, but current UE code may ignore it until extended.\n"
+        "The exporter also packages `materials/backend_candidates/` for future backend switching, but current UE code may ignore it until extended.\n"
     )
 
 
@@ -896,11 +932,15 @@ def build_summary(
     selected_count = sum(1 for record in material_selection["records"] if record.get("selected"))
     project_root = run_dir.parents[1].parent
     generated_runtime_data_path = project_root / "generated" / "ue_ready" / "runtime_data"
-    summary_path = run_dir / "05_reports" / "d6g_a2_material_manifest_runtime_export_summary.json"
-    report_path = run_dir / "05_reports" / "d6g_a2_material_manifest_runtime_export_report.md"
+    summary_path = run_dir / "05_reports" / SUMMARY_FILENAME
+    report_path = run_dir / "05_reports" / REPORT_FILENAME
     return {
         "schema_version": SUMMARY_SCHEMA,
         "status": status,
+        "stage_id": STAGE_ID,
+        "round_id": ROUND_ID,
+        "compatibility_id": COMPATIBILITY_ID,
+        "compatibility_note": "Behavior-compatible with the validated research RuntimeData export flow; public stage naming is cleaned for final project usage.",
         "dry_run": dry_run,
         "command": command,
         "map_id": map_id,
@@ -942,7 +982,7 @@ def build_report(summary: dict[str, Any], material_selection: dict[str, Any]) ->
             f"{len(record['sd15_candidates'])} | {len(record['stablematerials_candidates'])} |"
         )
     return (
-        "# D6G-A2 Material Manifest and RuntimeData Export Report\n\n"
+        "# Material Manifest and RuntimeData Export Report\n\n"
         f"- Status: `{summary['status']}`\n"
         f"- Dry-run: `{summary['dry_run']}`\n"
         f"- Source run: `{summary['source_run']}`\n"
@@ -959,7 +999,7 @@ def build_report(summary: dict[str, Any], material_selection: dict[str, Any]) ->
         + "\n".join(rows)
         + "\n\n"
         "## UE Compatibility\n\n"
-        "The current UE loader can continue reading `textures.basecolor`; D6G-A2 sets this default path to the selected SD1.5 export. "
+        "The current UE loader can continue reading `textures.basecolor`; the exporter sets this default path to the selected SD1.5 export. "
         "`backend_candidates` stores both SD1.5 and StableMaterials artifacts for future UE-side backend switching without changing current loader behavior.\n"
     )
 
@@ -969,6 +1009,8 @@ def build_key_outputs_index(paths: dict[str, Path], summary: dict[str, Any]) -> 
         "schema_version": "d6g_a2_key_outputs_index_v1",
         "summary": summary["summary_path"],
         "report": summary["report_path"],
+        "legacy_summary": str(paths["reports"] / LEGACY_SUMMARY_FILENAME),
+        "legacy_report": str(paths["reports"] / LEGACY_REPORT_FILENAME),
         "source_validation": str(paths["source"] / "source_run_validation.json"),
         "material_manifest": summary["material_manifest_path"],
         "runtime_data_package": summary["runtime_data_package_path"],

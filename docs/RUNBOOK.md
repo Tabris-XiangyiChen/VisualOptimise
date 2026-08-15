@@ -33,8 +33,10 @@ images, and does not modify UE files.
 I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --generate-materials
 ```
 
-This requires DeepSeek, A1111 WebUI with API enabled, and StableMaterials local
-availability.
+This requires DeepSeek and A1111 WebUI with API enabled. StableMaterials is an
+optional candidate backend: if its configured Python/model path is unavailable,
+or if `--no-stablematerials` is passed, SD1.5 generation and default RuntimeData
+export remain blocking and can still pass.
 
 To run more than one map package, pass multiple map IDs. Each map is processed
 independently; RuntimeData export updates `maps/<map_id>` entries and rebuilds
@@ -90,6 +92,13 @@ Python for length only. Python does not semantically trim StableMaterials text.
 If StableMaterials prompt length remains over budget after LLM2 retries, the
 StableMaterials backend is downgraded to a warning while SD1.5 remains eligible
 for default RuntimeData export.
+
+To skip StableMaterials generation explicitly while keeping SD1.5 as the main
+image backend:
+
+```powershell
+I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_main_pipeline.py --map test_map1_clean --full --no-stablematerials
+```
 
 ## Copy RuntimeData To UE
 

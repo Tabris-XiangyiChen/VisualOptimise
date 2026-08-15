@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "llm_max_attempts": 2,
     "prompt_llm_max_attempts": 2,
     "refresh_runtime_data": True,
+    "stablematerials_enabled": True,
 }
 
 

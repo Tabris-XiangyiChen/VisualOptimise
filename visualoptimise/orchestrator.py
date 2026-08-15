@@ -37,6 +37,7 @@ class MainPipelineRequest:
     reuse_materials_from: Path | None
     seeds: list[int] | None
     images_per_material: int | None
+    stablematerials_enabled: bool
 
 
 class ProductionPipelineContext:
@@ -81,6 +82,7 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
     else:
         try:
             if request.mode in {"full", "generate-materials"}:
+                print(f"[VisualOptimise] Main pipeline: material generation stage for {request.map_id}")
                 material_run = material_generation_pipeline.run_experiment(
                     pipeline,
                     request.map_id,
@@ -92,12 +94,14 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
                     request.prompt_llm_max_attempts,
                     request.seeds,
                     request.images_per_material,
+                    request.stablematerials_enabled,
                 )
             elif request.reuse_materials_from:
                 material_run = request.reuse_materials_from
 
             if request.mode in {"full", "export-only"}:
                 source_run = material_run if material_run is not None else request.reuse_materials_from
+                print(f"[VisualOptimise] Main pipeline: RuntimeData export stage for {request.map_id}")
                 export_run = runtime_export.run_experiment(
                     pipeline,
                     request.map_id,
@@ -196,6 +200,7 @@ def build_stage_plan(request: MainPipelineRequest) -> dict[str, Any]:
             "prompt_llm_max_attempts": request.prompt_llm_max_attempts,
             "seeds": request.seeds,
             "images_per_material": request.images_per_material,
+            "stablematerials_enabled": request.stablematerials_enabled,
             "would_call_llm": material_stage_enabled and not request.dry_run,
             "would_generate_images": material_stage_enabled and not request.dry_run,
         },
@@ -227,6 +232,7 @@ def request_to_json(request: MainPipelineRequest) -> dict[str, Any]:
         "reuse_materials_from": str(request.reuse_materials_from) if request.reuse_materials_from else None,
         "seeds": request.seeds,
         "images_per_material": request.images_per_material,
+        "stablematerials_enabled": request.stablematerials_enabled,
         "backend_paths": backend_paths_to_json(load_backend_paths(request.project_root)),
     }
 
@@ -262,4 +268,6 @@ def build_command(request: MainPipelineRequest) -> str:
         parts.extend(["--seeds", *[str(seed) for seed in request.seeds]])
     if request.images_per_material is not None:
         parts.extend(["--images-per-material", str(request.images_per_material)])
+    if not request.stablematerials_enabled:
+        parts.append("--no-stablematerials")
     return " ".join(parts)

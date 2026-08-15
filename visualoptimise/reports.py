@@ -19,12 +19,18 @@ def read_json_if_exists(path: Path) -> dict[str, Any]:
 def material_generation_summary(run_dir: Path | None) -> dict[str, Any]:
     if run_dir is None:
         return {}
+    preferred = read_json_if_exists(run_dir / "10_reports" / "material_generation_summary.json")
+    if preferred:
+        return preferred
     return read_json_if_exists(run_dir / "10_reports" / "d6f_a4_full_two_llm_material_generation_preview_summary.json")
 
 
 def runtime_export_summary(run_dir: Path | None) -> dict[str, Any]:
     if run_dir is None:
         return {}
+    preferred = read_json_if_exists(run_dir / "05_reports" / "runtime_export_summary.json")
+    if preferred:
+        return preferred
     return read_json_if_exists(run_dir / "05_reports" / "d6g_a2_material_manifest_runtime_export_summary.json")
 
 

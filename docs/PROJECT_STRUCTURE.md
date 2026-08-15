@@ -8,7 +8,7 @@ working material pipeline.
 - `run_main_pipeline.py`: single command-line entry point.
 - `visualoptimise/cli.py`: argument parsing and mode selection.
 - `visualoptimise/orchestrator.py`: local stage orchestration and pipeline context.
-- `visualoptimise/submission_validation.py`: D6G-B3 submission hardening, config, isolation, equivalence, and documentation validation.
+- `visualoptimise/submission_validation.py`: submission hardening, config, isolation, equivalence, and documentation validation.
 
 ## Core Pipeline
 
@@ -46,7 +46,9 @@ The following modules provide stable engineering names around extracted logic:
 
 ## Compatibility Identifiers
 
-Some artifact schemas and report filenames intentionally retain names such as
+Public run folders and primary report filenames now use clean stage names:
+`material_generation` and `runtime_export`. Some legacy report-file copies and
+schema identifiers intentionally retain names such as
 `d6f_a4_full_two_llm_material_generation_preview` and
 `d6g_a2_material_manifest_runtime_export`. These are compatibility identifiers
 for the validated research stages that the submission project preserves. They
@@ -63,7 +65,7 @@ in `settings/backend_paths.json`; generated packages still live under
 ## Large Core Modules
 
 Several files remain larger than ideal because they preserve validated behavior
-from the successful D6F/D6G pipeline. The small facade modules provide cleaner
+from the successful research pipeline. The small facade modules provide cleaner
 engineering names, while deeper splitting is intentionally deferred to avoid
 changing prompt contracts, validators, or RuntimeData schema during submission
 hardening.

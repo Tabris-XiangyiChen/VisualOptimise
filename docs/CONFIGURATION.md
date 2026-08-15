@@ -57,6 +57,20 @@ StableMaterials remains local/offline. The worker preserves:
 
 Only the Python executable and model directory are configurable.
 
+StableMaterials is optional for the default SD1.5 RuntimeData path. To disable
+it by default, set this in `settings/pipeline_defaults.json`:
+
+```json
+{
+  "stablematerials_enabled": false
+}
+```
+
+For a single run, pass `--no-stablematerials`. The LLM still produces
+StableMaterials prompt briefs for audit compatibility, but no StableMaterials
+worker is launched and no StableMaterials candidate structure is packaged when
+there are no generated StableMaterials files.
+
 ## RuntimeData Export
 
 The Python pipeline writes the latest UE-copyable package to:

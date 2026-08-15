@@ -372,7 +372,11 @@ def run_behavior_equivalence_audit(reference_material_run: Path) -> dict[str, An
         "stable_tileable": preview_generation.STABLEMATERIALS_SETTINGS.get("tileable") is True,
         "runtime_selection_policy": runtime_export.SELECTION_POLICY == "first_available_seed",
         "llm2_schema": prompt_generation.SCHEMA_VERSION == "material_prompt_briefs_v4",
-        "round_ids_preserved": material_generation_pipeline.ROUND_ID.startswith("d6f_a4") and runtime_export.ROUND_ID.startswith("d6g_a2"),
+        "public_stage_ids_clean": material_generation_pipeline.ROUND_ID == "material_generation" and runtime_export.ROUND_ID == "runtime_export",
+        "compatibility_ids_preserved": (
+            material_generation_pipeline.COMPATIBILITY_ID.startswith("d6f_a4")
+            and runtime_export.COMPATIBILITY_ID.startswith("d6g_a2")
+        ),
     }
     return {
         "schema_version": "behavior_equivalence_audit_v1",
@@ -385,7 +389,8 @@ def run_behavior_equivalence_audit(reference_material_run: Path) -> dict[str, An
         "sd15_settings_changed": False,
         "stablematerials_settings_changed": False,
         "runtime_data_schema_changed": False,
-        "round_ids_renamed": False,
+        "public_stage_ids_renamed": True,
+        "compatibility_ids_renamed": False,
     }
 
 

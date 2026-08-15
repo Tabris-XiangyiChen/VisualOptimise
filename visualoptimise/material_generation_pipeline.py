@@ -22,8 +22,14 @@ from visualoptimise.llm_artifacts import build_json_chat_payload, parse_json_res
 from .material_generation_report import build_markdown_report
 
 
-ROUND_ID = "d6f_a4_full_two_llm_material_generation_preview"
-RUN_SUFFIX = ROUND_ID
+STAGE_ID = "material_generation"
+COMPATIBILITY_ID = "d6f_a4_full_two_llm_material_generation_preview"
+ROUND_ID = STAGE_ID
+RUN_SUFFIX = STAGE_ID
+SUMMARY_FILENAME = "material_generation_summary.json"
+REPORT_FILENAME = "material_generation_report.md"
+LEGACY_SUMMARY_FILENAME = f"{COMPATIBILITY_ID}_summary.json"
+LEGACY_REPORT_FILENAME = f"{COMPATIBILITY_ID}_report.md"
 SUPPORTED_SEMANTIC_MODE = "llm"
 SUPPORTED_MATERIAL_MODE = "preview-only"
 GENERATION_CONFIG_RELATIVE = Path("settings") / "material_generation_defaults.json"
@@ -60,6 +66,7 @@ def run_experiment(
     prompt_llm_max_attempts: int,
     seeds: list[int] | None = None,
     images_per_material: int | None = None,
+    stablematerials_enabled: bool = True,
 ) -> Path:
     maps = normalize_map_ids(map_ids, fallback_map_id)
     if len(maps) != 1:
@@ -76,9 +83,10 @@ def run_experiment(
     ensure_dirs(paths)
     generation_config = resolve_generation_seed_config(pipeline.root, seeds, images_per_material)
     resolved_seeds = generation_config["seeds"]
-    command = build_command(pipeline.root, map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material)
+    print(f"[VisualOptimise] Material generation: preparing run for {map_id} ({run_dir.name})")
+    command = build_command(pipeline.root, map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material, stablematerials_enabled)
     write_text(paths["run"] / "command.txt", command)
-    write_json(paths["run"] / "run_config.json", build_run_config(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, generation_config))
+    write_json(paths["run"] / "run_config.json", build_run_config(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, generation_config, stablematerials_enabled))
     write_json(paths["run"] / "generation_seed_config.json", generation_config)
 
     component_manifest = {
@@ -87,31 +95,42 @@ def run_experiment(
         "prompt_brief_planning": "visualoptimise.prompt_generation",
         "preview_generation": "visualoptimise.preview_generation",
         "minimal_compatibility_patches": [
-            "A4 builds a dynamic Plan A request table instead of the fixed A/B experiment table.",
-            "A4 writes a full-pipeline output structure while reusing component functions.",
-            "A4 adjusts only the dry-run template tileability order so it satisfies the reused D6E-style validator; real LLM2 prompt text is unchanged.",
-            "A4 applies bounded post-retry prompt-contract normalization for missing/misplaced tileability tags and removable weak meta tags, with a saved report.",
+            "The material generation stage builds a dynamic Plan A request table instead of the fixed A/B experiment table.",
+            "The material generation stage writes a full-pipeline output structure while reusing validated component functions.",
+            "The material generation stage adjusts only the dry-run template tileability order so it satisfies the reused prompt validator; real LLM2 prompt text is unchanged.",
+            "The material generation stage applies bounded post-retry prompt-contract normalization for missing/misplaced tileability tags and removable weak meta tags, with a saved report.",
         ],
     }
     write_json(paths["run"] / "component_reuse_manifest.json", component_manifest)
 
+    print(f"[VisualOptimise] Material generation: LLM1 semantic planning for {map_id}")
     llm1_result = run_llm1_and_resolver(pipeline, paths, map_id, dry_run, llm_max_attempts)
-    llm2_result = run_fix3_llm2(pipeline, paths, llm1_result, dry_run, prompt_llm_max_attempts)
+    print(f"[VisualOptimise] Material generation: LLM2 prompt brief generation for {map_id}")
+    llm2_result = run_fix3_llm2(pipeline, paths, llm1_result, dry_run, prompt_llm_max_attempts, stablematerials_enabled)
     material_slots = material_slots_from_compiled(llm2_result["compiled_sd15"])
     display_labels = display_labels_from_slots(material_slots, llm2_result["compiled_sd15"], llm1_result["dynamic_evidence"])
 
     plan_a = build_sd15_plan_a(llm2_result["compiled_sd15"])
     sd15_requests = build_sd15_requests(plan_a, material_slots, display_labels, resolved_seeds)
-    sm_requests = build_stablematerials_requests(llm2_result["compiled_stablematerials"], material_slots, display_labels, resolved_seeds)
+    sm_requests = build_stablematerials_requests(llm2_result["compiled_stablematerials"], material_slots, display_labels, resolved_seeds) if stablematerials_enabled else []
     write_json(paths["compiled"] / "compiled_sd15_plan_a.json", plan_a)
     write_json(paths["compiled"] / "compiled_stablematerials_preview.json", llm2_result["compiled_stablematerials"])
     write_json(paths["compiled"] / "sd15_request_table.json", {"schema_version": "d6f_a4_sd15_plan_a_request_table_v1", "settings": SD15_SETTINGS, "requests": sd15_requests})
-    write_json(paths["compiled"] / "stablematerials_request_table.json", {"schema_version": "d6f_a4_stablematerials_request_table_v1", "settings": STABLEMATERIALS_SETTINGS, "requests": sm_requests})
+    write_json(paths["compiled"] / "stablematerials_request_table.json", {"schema_version": "d6f_a4_stablematerials_request_table_v1", "generation_enabled": stablematerials_enabled, "settings": STABLEMATERIALS_SETTINGS, "requests": sm_requests})
 
     positive_audit = preview_generation.audit_positive_side_pollution(llm2_result["prompt_briefs"], llm1_result["dynamic_evidence"])
     write_json(paths["analysis"] / "positive_side_audit_reported_only.json", positive_audit)
 
+    print(f"[VisualOptimise] Material generation: backend preflight for {map_id}")
     preflight = preview_generation.preflight_backends(pipeline)
+    if not stablematerials_enabled:
+        preflight["stablematerials"] = {
+            **preflight.get("stablematerials", {}),
+            "passed": True,
+            "skipped": True,
+            "errors": [],
+            "warnings": ["StableMaterials generation disabled by CLI/config; SD1.5 remains the blocking generation backend."],
+        }
     write_json(paths["run"] / "backend_preflight.json", preflight)
     sd15_outputs: list[dict[str, Any]] = []
     sm_outputs: list[dict[str, Any]] = []
@@ -122,9 +141,20 @@ def run_experiment(
     if not dry_run:
         if not preflight["sd15"]["passed"]:
             raise RuntimeError("SD1.5 preflight failed: " + json.dumps(preflight["sd15"]["errors"], ensure_ascii=False))
-        stablematerials_enabled = llm2_result.get("stablematerials_policy", {}).get("generation_enabled", True)
-        if not preflight["stablematerials"]["passed"]:
-            stablematerials_enabled = False
+        stablematerials_generation_enabled = stablematerials_enabled and llm2_result.get("stablematerials_policy", {}).get("generation_enabled", True)
+        if not stablematerials_enabled:
+            print(f"[VisualOptimise] Material generation: StableMaterials skipped for {map_id} (--no-stablematerials/config)")
+            non_blocking_failed_items.append(
+                {
+                    "backend": "stablematerials_lcm",
+                    "request_id": "stablematerials_disabled_by_config",
+                    "non_blocking": True,
+                    "error": "StableMaterials generation skipped by --no-stablematerials or settings stablematerials_enabled=false.",
+                }
+            )
+        elif not preflight["stablematerials"]["passed"]:
+            stablematerials_generation_enabled = False
+            print(f"[VisualOptimise] Material generation: StableMaterials preflight failed for {map_id}; continuing with SD1.5")
             non_blocking_failed_items.append(
                 {
                     "backend": "stablematerials_lcm",
@@ -133,14 +163,17 @@ def run_experiment(
                     "error": "StableMaterials preflight failed: " + json.dumps(preflight["stablematerials"]["errors"], ensure_ascii=False),
                 }
             )
+        print(f"[VisualOptimise] Material generation: SD1.5 generating {len(sd15_requests)} image(s) for {map_id}")
         sd15_outputs, sd_failures, sd_timings = preview_generation.run_sd15_generation(pipeline, paths, sd15_requests, preflight)
         failed_items.extend(sd_failures)
         timings.extend(sd_timings)
-        if stablematerials_enabled:
+        if stablematerials_generation_enabled:
+            print(f"[VisualOptimise] Material generation: StableMaterials generating {len(sm_requests)} set(s) for {map_id}")
             sm_outputs, sm_failures, sm_timings = preview_generation.run_stablematerials_generation(pipeline, paths, sm_requests)
             non_blocking_failed_items.extend({**item, "non_blocking": True} for item in sm_failures)
             timings.extend(sm_timings)
-        else:
+        elif stablematerials_enabled and not preflight["stablematerials"].get("skipped"):
+            print(f"[VisualOptimise] Material generation: StableMaterials skipped for {map_id} by prompt length policy")
             non_blocking_failed_items.append(
                 {
                     "backend": "stablematerials_lcm",
@@ -150,8 +183,11 @@ def run_experiment(
                     "policy": llm2_result.get("stablematerials_policy", {}),
                 }
             )
+        print(f"[VisualOptimise] Material generation: finished image backend calls for {map_id}")
+    else:
+        stablematerials_generation_enabled = stablematerials_enabled
 
-    diagnostics = build_generation_diagnostics(material_slots, resolved_seeds, sd15_outputs, sm_outputs, failed_items, non_blocking_failed_items, timings, dry_run)
+    diagnostics = build_generation_diagnostics(material_slots, resolved_seeds, sd15_outputs, sm_outputs, failed_items, non_blocking_failed_items, timings, dry_run, stablematerials_generation_enabled)
     write_json(paths["analysis"] / "generation_summary.json", diagnostics["generation_summary"])
     write_json(paths["analysis"] / "missing_outputs.json", diagnostics["missing_outputs"])
     write_json(paths["analysis"] / "non_blocking_failed_items.json", diagnostics["non_blocking_failed_items"])
@@ -163,7 +199,7 @@ def run_experiment(
 
     contact_sheets: dict[str, str] = {}
     if not dry_run:
-        contact_sheets = create_contact_sheets(paths, material_slots, display_labels, resolved_seeds, sd15_outputs, sm_outputs)
+        contact_sheets = create_contact_sheets(paths, material_slots, display_labels, resolved_seeds, sd15_outputs, sm_outputs, stablematerials_generation_enabled)
 
     prior_audit = build_prior_leak_audit(llm1_result, llm2_result, positive_audit)
     write_json(paths["analysis"] / "prior_leak_audit.json", prior_audit)
@@ -185,13 +221,16 @@ def run_experiment(
         prior_audit=prior_audit,
         elapsed_seconds=round(time.perf_counter() - started, 3),
     )
-    write_json(paths["reports"] / "d6f_a4_full_two_llm_material_generation_preview_summary.json", summary)
-    write_text(paths["reports"] / "d6f_a4_full_two_llm_material_generation_preview_report.md", build_markdown_report(summary))
+    report = build_markdown_report(summary)
+    write_json(paths["reports"] / SUMMARY_FILENAME, summary)
+    write_text(paths["reports"] / REPORT_FILENAME, report)
+    write_json(paths["reports"] / LEGACY_SUMMARY_FILENAME, summary)
+    write_text(paths["reports"] / LEGACY_REPORT_FILENAME, report)
     write_json(paths["run"] / "run_manifest.json", build_run_manifest(run_dir, command, dry_run, summary))
     write_json(paths["run"] / "key_outputs_index.json", build_key_outputs_index(paths, summary))
 
     if not dry_run and summary["status"] != "passed":
-        raise RuntimeError(f"D6F-A4 completed but did not pass natively. See {summary['summary_path']}")
+        raise RuntimeError(f"Material generation completed but did not pass natively. See {summary['summary_path']}")
     return run_dir
 
 
@@ -207,6 +246,7 @@ def build_command(
     prompt_llm_max_attempts: int,
     cli_seeds: list[int] | None,
     cli_images_per_material: int | None,
+    stablematerials_enabled: bool,
 ) -> str:
     backend_paths = load_backend_paths(project_root)
     python_executable = str(backend_paths.dissertation_python or "python")
@@ -221,6 +261,8 @@ def build_command(
         command += " --seeds " + " ".join(str(seed) for seed in cli_seeds)
     if cli_images_per_material is not None:
         command += f" --images-per-material {cli_images_per_material}"
+    if not stablematerials_enabled:
+        command += " --no-stablematerials"
     if dry_run:
         command += " --dry-run"
     return command
@@ -232,10 +274,13 @@ def build_run_config(
     llm_max_attempts: int,
     prompt_llm_max_attempts: int,
     generation_config: dict[str, Any],
+    stablematerials_enabled: bool,
 ) -> dict[str, Any]:
     return {
         "schema_version": "d6f_a4_run_config_v1",
+        "stage_id": STAGE_ID,
         "round_id": ROUND_ID,
+        "compatibility_id": COMPATIBILITY_ID,
         "map_id": map_id,
         "dry_run": dry_run,
         "semantic_mode": SUPPORTED_SEMANTIC_MODE,
@@ -243,8 +288,9 @@ def build_run_config(
         "llm_max_attempts": llm_max_attempts,
         "prompt_llm_max_attempts": prompt_llm_max_attempts,
         "generation_seed_config": generation_config,
+        "stablematerials_enabled": stablematerials_enabled,
         "started_at": timestamp_iso(),
-        "plan_policy": "SD1.5 Plan A only; Fix3 positives and Fix3 negatives as-is.",
+        "plan_policy": "SD1.5 Plan A only; use the validated positive and negative prompt path as-is.",
         "strict_exclusions": {
             "runtime_data_export": "not_called",
             "generated_package_export": "not_called",
@@ -457,6 +503,7 @@ def run_fix3_llm2(
     llm1_result: dict[str, Any],
     dry_run: bool,
     max_attempts: int,
+    stablematerials_enabled: bool,
 ) -> dict[str, Any]:
     prompt_input = llm1_result["prompt_llm_input"]
     dynamic_evidence = llm1_result["dynamic_evidence"]
@@ -511,7 +558,7 @@ def run_fix3_llm2(
     write_json(paths["compiled"] / "d6e_fix2_fix3_prompt_comparison.json", comparison)
     write_text(paths["compiled"] / "prompt_comparison_report.md", mainline_prompting.build_comparison_report(comparison))
 
-    stablematerials_policy = build_stablematerials_policy(prompt_validation)
+    stablematerials_policy = build_stablematerials_policy(prompt_validation, stablematerials_enabled)
     if stablematerials_policy["downgraded_to_warning"]:
         prompt_validation = downgrade_stablematerials_length_validation(prompt_validation, stablematerials_policy)
         write_json(paths["llm2"] / "stablematerials_length_validation_downgraded.json", prompt_validation["stablematerials_length"])
@@ -533,7 +580,7 @@ def run_fix3_llm2(
     }
 
 
-def build_stablematerials_policy(prompt_validation: dict[str, Any]) -> dict[str, Any]:
+def build_stablematerials_policy(prompt_validation: dict[str, Any], stablematerials_enabled: bool = True) -> dict[str, Any]:
     summary = prompt_validation.get("summary", {})
     stable_rows = prompt_validation.get("stablematerials_length", {}).get("rows", [])
     stable_errors = [
@@ -541,6 +588,21 @@ def build_stablematerials_policy(prompt_validation: dict[str, Any]) -> dict[str,
         for row in stable_rows
         if not row.get("passed", True)
     ]
+    if not stablematerials_enabled:
+        return {
+            "schema_version": "stablematerials_non_blocking_length_policy_v1",
+            "generation_enabled": False,
+            "downgraded_to_warning": bool(stable_errors),
+            "disabled_by_config": True,
+            "reason": "StableMaterials generation is disabled by CLI/config; StableMaterials length validation is warning-only and SD1.5 remains the blocking backend.",
+            "stablematerials_length_errors": stable_errors,
+            "policy": [
+                "LLM2 may still produce StableMaterials prompt briefs for audit compatibility.",
+                "StableMaterials generation is not launched when disabled by CLI/config.",
+                "StableMaterials prompt length errors do not block SD1.5 generation when disabled.",
+                "No StableMaterials candidate structure is packaged when no StableMaterials files exist.",
+            ],
+        }
     only_stablematerials_length_errors = bool(stable_errors) and all(
         error.get("error") == "stablematerials_length_validation_failed"
         for error in summary.get("errors", [])
@@ -579,7 +641,7 @@ def downgrade_stablematerials_length_validation(prompt_validation: dict[str, Any
 
 
 def fix3_dry_run_briefs_with_valid_tileability_order(source_files: dict[str, Any]) -> dict[str, Any]:
-    """Use Fix3 dry-run briefs, then apply a dry-run-only tileability order fix."""
+    """Use validated dry-run briefs, then apply a dry-run-only tileability order fix."""
     briefs = mainline_prompting.build_dry_run_briefs(source_files)
     for item in briefs.get("backend_prompt_briefs", []):
         tags = [str(tag) for tag in item.get("sd15", {}).get("positive_tags", [])]
@@ -592,7 +654,7 @@ def fix3_dry_run_briefs_with_valid_tileability_order(source_files: dict[str, Any
             for rich in richness:
                 if rich.get("tag") in tile_tags:
                     rich["tag"] = tags[1] if len(tags) > 1 else tags[0]
-    briefs.setdefault("warnings", []).append("A4 dry-run-only compatibility patch moved tileability tags after tag 2.")
+    briefs.setdefault("warnings", []).append("Dry-run-only compatibility patch moved tileability tags after tag 2.")
     return briefs
 
 
@@ -629,10 +691,10 @@ def build_sd15_plan_a(compiled_sd15: dict[str, Any]) -> dict[str, Any]:
     for item in compiled_sd15.get("prompts", []):
         row = dict(item)
         row["plan_id"] = "plan_a"
-        row["negative_policy"] = "fix3_as_is"
-        row["source"] = "d6f_a4_fresh_fix3_compiled_sd15_prompts_v4"
+        row["negative_policy"] = "validated_plan_a_as_is"
+        row["source"] = "material_generation_compiled_sd15_prompts_v4"
         rows.append(row)
-    return {"schema_version": "compiled_sd15_prompts_d6f_a4_plan_a_v1", "backend": "sd15_a1111_txt2img", "plan_id": "plan_a", "prompts": rows}
+    return {"schema_version": "compiled_sd15_prompts_material_generation_plan_a_v1", "backend": "sd15_a1111_txt2img", "plan_id": "plan_a", "prompts": rows}
 
 
 def build_sd15_requests(sd15_prompts: dict[str, Any], material_slots: list[str], display_labels: dict[str, str], seeds: list[int]) -> list[dict[str, Any]]:
@@ -688,9 +750,10 @@ def build_generation_diagnostics(
     non_blocking_failed_items: list[dict[str, Any]],
     timings: list[dict[str, Any]],
     dry_run: bool,
+    stablematerials_generation_enabled: bool,
 ) -> dict[str, Any]:
     expected_sd15 = len(material_slots) * len(seeds)
-    expected_sm = len(material_slots) * len(seeds)
+    expected_sm = len(material_slots) * len(seeds) if stablematerials_generation_enabled else 0
     sd_keys = {(item.get("material_slot_id"), int(item.get("seed", -1))) for item in sd15_outputs if item.get("plan_id") == "plan_a"}
     sm_keys = {(item.get("material_slot_id"), int(item.get("seed", -1))) for item in sm_outputs}
     missing = []
@@ -699,12 +762,13 @@ def build_generation_diagnostics(
         for seed in seeds:
             if not dry_run and (slot_id, seed) not in sd_keys:
                 missing.append({"backend": "sd15_a1111_txt2img", "plan_id": "plan_a", "material_slot_id": slot_id, "seed": seed})
-            if not dry_run and (slot_id, seed) not in sm_keys:
+            if stablematerials_generation_enabled and not dry_run and (slot_id, seed) not in sm_keys:
                 non_blocking_missing.append({"backend": "stablematerials_lcm", "material_slot_id": slot_id, "seed": seed, "non_blocking": True})
     generation_summary = {
         "schema_version": "d6f_a4_generation_summary_v1",
         "dry_run": dry_run,
         "stablematerials_non_blocking": True,
+        "stablematerials_generation_enabled": stablematerials_generation_enabled,
         "expected_sd15_images": expected_sd15,
         "expected_sd15_plan_a_images": expected_sd15,
         "expected_stablematerials_sets": expected_sm,
@@ -793,16 +857,19 @@ def create_contact_sheets(
     seeds: list[int],
     sd15_outputs: list[dict[str, Any]],
     sm_outputs: list[dict[str, Any]],
+    stablematerials_generation_enabled: bool,
 ) -> dict[str, str]:
     sheets = {
         "sd15_plan_a_by_material": paths["contact_sheets"] / "contact_sheet_sd15_plan_a_by_material.png",
-        "stablematerials_by_material": paths["contact_sheets"] / "contact_sheet_stablematerials_by_material.png",
-        "cross_backend_comparison": paths["contact_sheets"] / "contact_sheet_cross_backend_comparison.png",
         "cross_variation_overview": paths["contact_sheets"] / "contact_sheet_cross_variation_overview.png",
     }
-    make_grid_sheet(material_slots, display_labels, seeds, sd15_outputs, "output", sheets["sd15_plan_a_by_material"], "D6F-A4 SD1.5 Plan A")
-    make_grid_sheet(material_slots, display_labels, seeds, sm_outputs, "basecolor", sheets["stablematerials_by_material"], "D6F-A4 StableMaterials")
-    make_backend_comparison_sheet(material_slots, display_labels, seeds, sd15_outputs, sm_outputs, sheets["cross_backend_comparison"])
+    if stablematerials_generation_enabled:
+        sheets["stablematerials_by_material"] = paths["contact_sheets"] / "contact_sheet_stablematerials_by_material.png"
+        sheets["cross_backend_comparison"] = paths["contact_sheets"] / "contact_sheet_cross_backend_comparison.png"
+    make_grid_sheet(material_slots, display_labels, seeds, sd15_outputs, "output", sheets["sd15_plan_a_by_material"], "Material Generation SD1.5 Plan A")
+    if stablematerials_generation_enabled:
+        make_grid_sheet(material_slots, display_labels, seeds, sm_outputs, "basecolor", sheets["stablematerials_by_material"], "Material Generation StableMaterials")
+        make_backend_comparison_sheet(material_slots, display_labels, seeds, sd15_outputs, sm_outputs, sheets["cross_backend_comparison"])
     make_cross_variation_sheet(display_labels, sd15_outputs, sm_outputs, sheets["cross_variation_overview"])
     return {key: str(path) for key, path in sheets.items()}
 
@@ -842,7 +909,7 @@ def make_backend_comparison_sheet(material_slots: list[str], display_labels: dic
     cols = len(seeds) * 2
     canvas = Image.new("RGB", (margin * 2 + label_w + cols * thumb, margin * 2 + 44 + len(material_slots) * (thumb + label_h)), (28, 30, 30))
     draw = ImageDraw.Draw(canvas)
-    draw.text((margin, margin), "D6F-A4 backend comparison: SD1.5 Plan A vs StableMaterials", fill=(235, 235, 230))
+    draw.text((margin, margin), "Backend comparison: SD1.5 Plan A vs StableMaterials", fill=(235, 235, 230))
     sd_by_key = {(item["material_slot_id"], int(item["seed"])): item for item in sd15_outputs}
     sm_by_key = {(item["material_slot_id"], int(item["seed"])): item for item in sm_outputs}
     y0 = margin + 44
@@ -873,7 +940,7 @@ def make_cross_variation_sheet(display_labels: dict[str, str], sd15_outputs: lis
     height_rows = (len(rows) + cols - 1) // cols
     canvas = Image.new("RGB", (margin * 2 + cols * thumb, margin * 2 + 30 + height_rows * (thumb + label_h)), (28, 30, 30))
     draw = ImageDraw.Draw(canvas)
-    draw.text((margin, margin), "D6F-A4 cross variation overview", fill=(235, 235, 230))
+    draw.text((margin, margin), "Material generation cross variation overview", fill=(235, 235, 230))
     for index, item in enumerate(rows):
         col = index % cols
         row = index // cols
@@ -893,7 +960,7 @@ def build_direct_visual_review(analysis: dict[str, Any], dry_run: bool) -> str:
         "# Direct Visual Review",
         "",
         f"- Dry run: {dry_run}",
-        "- SD1.5 uses Plan A only: Fix3 positive prompts with Fix3 negative prompts as-is.",
+        "- SD1.5 uses the validated Plan A positive and negative prompt path.",
         "- StableMaterials runs as the parallel preview backend.",
         "- This file is initialized automatically; inspect contact sheets for final visual judgement.",
         "",
@@ -964,7 +1031,10 @@ def build_summary(
     return {
         "schema_version": "d6f_a4_summary_v1",
         "status": status,
+        "stage_id": STAGE_ID,
         "round_id": ROUND_ID,
+        "compatibility_id": COMPATIBILITY_ID,
+        "compatibility_note": "Behavior-compatible with the validated research material generation flow; public stage naming is cleaned for final project usage.",
         "map_id": map_id,
         "dry_run": dry_run,
         "created_at": timestamp_iso(),
@@ -984,7 +1054,8 @@ def build_summary(
         "llm2_prompt_normalization": llm2_result.get("prompt_normalization", {}).get("summary", {}),
         "llm2_prompt_normalization_applied": llm2_result.get("prompt_normalization", {}).get("summary", {}).get("applied", False),
         "sd_webui_called": not dry_run,
-        "stablematerials_called": not dry_run,
+        "stablematerials_generation_enabled": generation_summary.get("stablematerials_generation_enabled", True),
+        "stablematerials_called": not dry_run and generation_summary.get("stablematerials_generation_enabled", True),
         "image_generation_called": not dry_run,
         "sd15_images_generated": generation_summary["sd15_images_generated"],
         "sd15_plan_a_images_generated": generation_summary["sd15_plan_a_images_generated"],
@@ -1000,11 +1071,11 @@ def build_summary(
         "old_material_slot_rules_used": False,
         "old_material_slot_evidence_used": False,
         "suggested_prompt_hint_used": False,
-        "fix1_llm1_resolver_reused": True,
-        "fix3_prompt_contract_reused": True,
-        "fix3_patched_validator_reused": True,
-        "fix4_plan_a_generation_reused": True,
-        "plan_b_run": False,
+        "semantic_planner_resolver_active": True,
+        "material_prompt_contract_active": True,
+        "prompt_validator_active": True,
+        "sd15_plan_a_generation_active": True,
+        "alternate_plan_b_run": False,
         "native_run_passed_without_posthoc_recheck": (not dry_run and status == "passed"),
         "llm1_validation_passed": llm1_result["llm1_validation"]["summary"]["passed"],
         "dynamic_evidence_validation_passed": llm1_result["evidence_validation"]["passed"],
@@ -1017,8 +1088,8 @@ def build_summary(
         "analysis": analysis,
         "contact_sheets": contact_sheets,
         "elapsed_seconds": elapsed_seconds,
-        "summary_path": str(run_dir / "10_reports" / "d6f_a4_full_two_llm_material_generation_preview_summary.json"),
-        "report_path": str(run_dir / "10_reports" / "d6f_a4_full_two_llm_material_generation_preview_report.md"),
+        "summary_path": str(run_dir / "10_reports" / SUMMARY_FILENAME),
+        "report_path": str(run_dir / "10_reports" / REPORT_FILENAME),
         "key_files": {
             "map_facts": str(run_dir / "01_map_facts" / "map_facts_v2.json"),
             "llm1_plan": str(run_dir / "02_llm1_material_plan" / "llm_tile_material_plan_v2.json"),
@@ -1039,7 +1110,9 @@ def build_summary(
 def build_run_manifest(run_dir: Path, command: str, dry_run: bool, summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "d6f_a4_run_manifest_v1",
+        "stage_id": STAGE_ID,
         "round_id": ROUND_ID,
+        "compatibility_id": COMPATIBILITY_ID,
         "created_at": timestamp_iso(),
         "run_dir": str(run_dir),
         "command": command,
@@ -1055,8 +1128,10 @@ def build_run_manifest(run_dir: Path, command: str, dry_run: bool, summary: dict
 def build_key_outputs_index(paths: dict[str, Path], summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "d6f_a4_key_outputs_index_v1",
-        "summary": str(paths["reports"] / "d6f_a4_full_two_llm_material_generation_preview_summary.json"),
-        "report": str(paths["reports"] / "d6f_a4_full_two_llm_material_generation_preview_report.md"),
+        "summary": str(paths["reports"] / SUMMARY_FILENAME),
+        "report": str(paths["reports"] / REPORT_FILENAME),
+        "legacy_summary": str(paths["reports"] / LEGACY_SUMMARY_FILENAME),
+        "legacy_report": str(paths["reports"] / LEGACY_REPORT_FILENAME),
         "map_facts": str(paths["map_facts"]),
         "llm1": str(paths["llm1"]),
         "resolver": str(paths["resolver"]),
