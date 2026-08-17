@@ -1,0 +1,44 @@
+{
+  "0": {
+    "name": "void",
+    "description": "empty outside-play-area space beyond the playable overworld ruin clearing; no visible surface material",
+    "material_family": "void",
+    "generate_material": false
+  },
+  "#": {
+    "name": "surface_ruin_stone",
+    "description": "ancient grey stone wall blocks, broken ruin fragments, and dungeon entrance masonry",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  ".": {
+    "name": "worn_stone_path",
+    "description": "dark worn stone path and compacted grey ground leading toward the ruin entrance",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "=": {
+    "name": "wooden_bridge",
+    "description": "aged brown wooden plank bridge crossing the shallow river",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "D": {
+    "name": "dungeon_entrance_door",
+    "description": "old dark wooden entrance door or gate set into the surface ruin",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "g": {
+    "name": "mossy_grass_ground",
+    "description": "dark green grassy ground with mossy damp patches around the ruin clearing",
+    "material_family": "ground_organic",
+    "generate_material": true
+  },
+  "~": {
+    "name": "shallow_river_water",
+    "description": "dark blue-green shallow river water flowing across the overworld ruin",
+    "material_family": "water_like",
+    "generate_material": true
+  }
+}

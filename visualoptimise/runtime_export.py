@@ -54,6 +54,7 @@ def run_experiment(
     refresh_runtime_data: bool,
     runtime_texture_backend: str,
     include_backend_candidates: bool = True,
+    map_root: Path | None = None,
 ) -> Path:
     maps = normalize_map_ids(map_ids, fallback_map_id)
     if len(maps) != 1:
@@ -68,7 +69,7 @@ def run_experiment(
     ensure_dirs(paths)
     print(f"[VisualOptimise] Runtime export: using source run {source_run}")
 
-    command = build_command(pipeline.root, map_id, source_run, dry_run, refresh_runtime_data, runtime_texture_backend, include_backend_candidates)
+    command = build_command(pipeline.root, map_id, source_run, dry_run, refresh_runtime_data, runtime_texture_backend, include_backend_candidates, map_root)
     write_text(paths["run"] / "command.txt", command)
     write_json(
         paths["run"] / "run_config.json",
@@ -147,6 +148,7 @@ def run_experiment(
             resolved_tileset_export=resolved_tileset_export,
             material_manifest=material_manifest,
             material_selection=material_selection,
+            map_root=map_root,
         )
         copy_material_textures(runtime_package_path / "maps" / map_id / "materials", material_selection)
         write_json(paths["manifest"] / "material_manifest.json", material_manifest)
@@ -711,6 +713,7 @@ def prepare_runtime_package(
     resolved_tileset_export: dict[str, Any],
     material_manifest: dict[str, Any],
     material_selection: dict[str, Any],
+    map_root: Path | None = None,
 ) -> None:
     current_runtime = project_root / "generated" / "ue_ready" / "runtime_data"
     if current_runtime.is_dir():
@@ -728,7 +731,10 @@ def prepare_runtime_package(
     rules_dir.mkdir(parents=True, exist_ok=True)
     materials_dir.mkdir(parents=True, exist_ok=True)
 
-    authoring_map = project_root / "data" / "maps" / map_id / "map.txt"
+    authoring_map_root = map_root if map_root is not None else project_root / "data" / "maps"
+    if not authoring_map_root.is_absolute():
+        authoring_map_root = project_root / authoring_map_root
+    authoring_map = authoring_map_root / map_id / "map.txt"
     shutil.copyfile(authoring_map, layout_dir / "map.txt")
     write_json(rules_dir / "resolved_tileset.json", resolved_tileset_export)
     write_json(rules_dir / "resolved_tileset_v2_source.json", source["resolved_tileset"])
@@ -1066,6 +1072,7 @@ def build_command(
     refresh_runtime_data: bool,
     runtime_texture_backend: str,
     include_backend_candidates: bool,
+    map_root: Path | None = None,
 ) -> str:
     backend_paths = load_backend_paths(project_root)
     python_executable = str(backend_paths.dissertation_python or "python")
@@ -1076,6 +1083,8 @@ def build_command(
         f"--reuse-materials-from \"{source_run}\" "
         f"--runtime-texture-backend {runtime_texture_backend}"
     )
+    if map_root is not None:
+        command += f' --map-root "{map_root}"'
     if not include_backend_candidates:
         command += " --no-include-backend-candidates"
     if not refresh_runtime_data:

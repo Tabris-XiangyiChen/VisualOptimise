@@ -1,0 +1,44 @@
+{
+  "0": {
+    "name": "void",
+    "description": "empty outside-play-area darkness beyond the dungeon chamber; no visible surface material",
+    "material_family": "void",
+    "generate_material": false
+  },
+  "#": {
+    "name": "dungeon_stone_wall",
+    "description": "ancient grey stone wall blocks, broken interior masonry, and pillar-like ruin supports",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  ".": {
+    "name": "dungeon_stone_floor",
+    "description": "dark worn stone floor slabs inside the first dungeon chamber",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "=": {
+    "name": "rotting_wood_walkway",
+    "description": "aged brown wooden planks forming a narrow walkway across the flooded chamber",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "D": {
+    "name": "wooden_dungeon_door",
+    "description": "old wooden door or gate tile connecting dungeon rooms",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "g": {
+    "name": "damp_moss_growth",
+    "description": "dark green moss and damp organic growth spreading across old stone floor",
+    "material_family": "ground_organic",
+    "generate_material": true
+  },
+  "~": {
+    "name": "stagnant_dungeon_water",
+    "description": "dark blue-green stagnant water collected in a shallow interior pool",
+    "material_family": "water_like",
+    "generate_material": true
+  }
+}

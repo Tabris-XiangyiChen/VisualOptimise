@@ -26,6 +26,8 @@ RUN_DIRS = {
 class MainPipelineRequest:
     project_root: Path
     map_id: str
+    map_root: Path
+    mesh_catalog: Path
     mode: str
     dry_run: bool
     semantic_mode: str
@@ -95,6 +97,8 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
                     request.seeds,
                     request.images_per_material,
                     request.stablematerials_enabled,
+                    request.map_root,
+                    request.mesh_catalog,
                 )
             elif request.reuse_materials_from:
                 material_run = request.reuse_materials_from
@@ -111,6 +115,7 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
                     request.refresh_runtime_data,
                     request.runtime_texture_backend,
                     True,
+                    request.map_root,
                 )
         except Exception as exc:
             status = "failed"
@@ -160,11 +165,11 @@ def run_main_pipeline(request: MainPipelineRequest) -> Path:
 def build_dry_run_validation(request: MainPipelineRequest, pipeline: ProductionPipelineContext) -> dict[str, Any]:
     errors = []
     warnings = ["Dry-run is plan-only; no LLM calls, image generation, backend calls, or RuntimeData refresh occurred."]
-    map_dir = pipeline.root / "data" / "maps" / request.map_id
+    map_dir = request.map_root / request.map_id
     for filename in ("map.txt", "legend.json", "style.txt"):
         if not (map_dir / filename).is_file():
             errors.append(f"Missing map package file: {map_dir / filename}")
-    mesh_catalog = pipeline.root / "data" / "ue_asset_catalogs" / "mesh_catalog.json"
+    mesh_catalog = request.mesh_catalog
     if not mesh_catalog.is_file():
         errors.append(f"Missing mesh catalog: {mesh_catalog}")
     else:
@@ -189,6 +194,11 @@ def build_stage_plan(request: MainPipelineRequest) -> dict[str, Any]:
         "schema_version": "visualoptimise_main_pipeline_stage_plan_v1",
         "created_at": timestamp_iso(),
         "map_id": request.map_id,
+        "input_paths": {
+            "map_root": str(request.map_root),
+            "map_package": str(request.map_root / request.map_id),
+            "mesh_catalog": str(request.mesh_catalog),
+        },
         "mode": request.mode,
         "dry_run": request.dry_run,
         "material_generation": {
@@ -221,6 +231,8 @@ def request_to_json(request: MainPipelineRequest) -> dict[str, Any]:
         "schema_version": "visualoptimise_main_pipeline_config_v1",
         "project_root": str(request.project_root),
         "map_id": request.map_id,
+        "map_root": str(request.map_root),
+        "mesh_catalog": str(request.mesh_catalog),
         "mode": request.mode,
         "dry_run": request.dry_run,
         "semantic_mode": request.semantic_mode,
@@ -254,6 +266,10 @@ def build_command(request: MainPipelineRequest) -> str:
         str(request.project_root / "run_main_pipeline.py"),
         "--map",
         request.map_id,
+        "--map-root",
+        str(request.map_root),
+        "--mesh-catalog",
+        str(request.mesh_catalog),
         f"--{request.mode if request.mode != 'export-only' else 'export-runtime-data'}",
         "--runtime-texture-backend",
         request.runtime_texture_backend,

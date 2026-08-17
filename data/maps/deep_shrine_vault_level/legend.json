@@ -1,0 +1,44 @@
+{
+  "0": {
+    "name": "void",
+    "description": "empty outside-play-area darkness beyond the deep underground vault; no visible surface material",
+    "material_family": "void",
+    "generate_material": false
+  },
+  "#": {
+    "name": "deep_ritual_stone",
+    "description": "dark ancient stone wall blocks, broken supports, and raised shrine masonry in the deep dungeon",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  ".": {
+    "name": "dark_shrine_floor",
+    "description": "dark worn stone floor slabs in an underground shrine vault",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "=": {
+    "name": "sunken_wood_bridge",
+    "description": "old damp wooden planks crossing narrow water channels around the central shrine",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "D": {
+    "name": "ancient_wooden_gate",
+    "description": "old wooden gate or doorway tile leading deeper through the dungeon",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "g": {
+    "name": "underground_moss",
+    "description": "sparse dark green moss growing in damp cracks of the deep stone chamber",
+    "material_family": "ground_organic",
+    "generate_material": true
+  },
+  "~": {
+    "name": "deep_cold_water",
+    "description": "dark cold blue-green water filling narrow channels around the central shrine",
+    "material_family": "water_like",
+    "generate_material": true
+  }
+}

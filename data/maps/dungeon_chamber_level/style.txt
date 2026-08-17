@@ -1,0 +1,4 @@
+A semi-realistic fantasy roguelike dungeon entrance chamber.
+The map shows the first interior room after entering the surface ruins, with ancient stone walls, worn stone floors, a stagnant blue-green pool, rotting wooden walkways, and damp moss in the corners.
+The mood is colder and darker than the overworld, with muted grey-green stone, wet surfaces, and readable tile-based dungeon materials.
+Generate flat or front-facing tileable material surfaces suitable for later UE5 modular tile and PCG reconstruction.

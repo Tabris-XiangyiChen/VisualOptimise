@@ -1,0 +1,4 @@
+A semi-realistic fantasy roguelike overworld ruin entrance.
+The map shows an old dungeon entrance discovered above ground, surrounded by mossy grass, broken grey stone ruins, a shallow blue-green river, and an aged wooden bridge.
+The mood is mysterious and abandoned, with muted natural colours, damp stone, overgrown grass, and readable tile-based game materials.
+Generate flat or front-facing tileable material surfaces suitable for later UE5 modular tile and PCG reconstruction.

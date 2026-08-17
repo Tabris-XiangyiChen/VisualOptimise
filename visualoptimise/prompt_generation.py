@@ -129,6 +129,9 @@ def build_llm2_system_prompt() -> str:
             "- Each positive tag should be 2 to 8 words.",
             "- Use 6 to 10 positive tags per material.",
             "- The first positive tag must combine the provided view mode with a specific material identity, such as a wall, floor, grass surface, wooden surface, wooden panel, or water surface.",
+            "- The first positive tag must contain at least one exact whole-word material identity token copied from the current material evidence, preferably from material_identity_coarse.",
+            "- If material_identity_coarse is too generic, use an exact material-bearing token from the current canonical material identity evidence.",
+            "- Do not rely only on synonyms or morphological variants in the first positive tag. For example, if the evidence contains 'wood', the first tag must contain the exact word 'wood', not only 'wooden'.",
             "- The first positive tag must not be a generic view-only phrase such as top down closeup surface, front facing closeup surface, front facing panel surface, tileable material texture, or tileable surface texture.",
             "- The provided sd15_view_mode must be represented in the first positive tag as natural SD1.5 language.",
             "- If the material is meant to repeat on a simple surface, include a repeat-friendly tag such as tileable or seamless only when compatible with the provided target.",
@@ -137,13 +140,13 @@ def build_llm2_system_prompt() -> str:
             "- negative_terms must be short terms only, not full negative sentences.",
             "- negative_terms should be sparse and conservative.",
             "- negative_terms should describe unwanted visual failure modes only when clearly useful.",
-            "- Do not put target material identity words into negative_terms.",
+            "- Do not use a bare target material identity word as a negative term. A multi-word state or contrast phrase may contain an identity token when it excludes a visual variant without removing the material itself.",
             "- Do not put mesh role, gameplay role, map usage, or context-only terms into runtime negative_terms. Put uncertain context terms into audit_only_context_terms instead.",
             "",
             "StableMaterials brief rules:",
             "- StableMaterials output remains material-oriented.",
             "- It should be more material-specific than SD1.5, but still concise.",
-            "- stablematerials.positive_phrase must use 8 to 16 English words.",
+            "- Keep the combined StableMaterials runtime prompt within the configured token budget. Individual fields may vary in word count; prefer concise material-only phrases.",
             "- The combined StableMaterials runtime prompt made from positive_phrase, surface_structure, and color_palette must stay under 55 CLIP tokens.",
             "- Write compact material-only phrases, not full sentences.",
             "- Include only material identity, main surface structure, colour or condition, and one fine detail.",
@@ -228,16 +231,17 @@ def build_llm2_user_prompt(prompt_input: dict[str, Any]) -> str:
             "- SD1.5 positive_tags must be desired visual tags only.",
             "- SD1.5 positive_tags must not contain no, not, without, semicolons, final sentence punctuation, or 'or' alternatives.",
             "- The first SD1.5 positive tag must combine view phrase and specific material identity.",
+            "- The first SD1.5 positive tag must contain at least one exact whole-word material identity token copied from the current slot evidence.",
+            "- Prefer an exact token from material_identity_coarse. Do not use only a synonym or morphological variant of that token.",
             "- The first SD1.5 positive tag must not be a generic view-only phrase.",
             "- Tileable or seamless must not appear in the first or second positive tag.",
             "- Each material must have 2 to 4 richness_tags.",
             "- richness_tags must also appear in positive_tags.",
             "- Negative terms must be sparse and conservative.",
             "- Negative terms must not duplicate positive_tags.",
-            "- Negative terms must not contain the target material identity.",
+            "- Negative terms must not exactly equal the target material identity or a complete multi-word identity phrase. A multi-word state or contrast phrase may contain an identity token when it excludes a visual variant without removing the material itself.",
             "- Do not put current evidence context-only source terms into runtime negative_terms when uncertain; place them in audit_only_context_terms.",
-            "- stablematerials.positive_phrase must use 8 to 16 English words.",
-            "- stablematerials.surface_structure and stablematerials.color_palette must each use 8 English words or fewer.",
+            "- Keep the combined StableMaterials runtime prompt within the configured token budget. Do not optimize by isolated word counts for individual fields.",
             "- The combined StableMaterials runtime prompt made from positive_phrase, surface_structure, and color_palette must stay under 55 approximate CLIP tokens.",
             "- Do not use old material_slot_evidence, old suggested_prompt_hint, fixed old material slots, or previous experiment knowledge.",
             "- Do not use original decorative symbols that are not present in the provided clean-map evidence.",
@@ -265,7 +269,7 @@ def call_llm2_until_valid(
         if attempts:
             feedback = {
                 "previous_validation_errors": attempts[-1].get("validation", {}).get("summary", {}).get("errors", []),
-                "instruction": "Repair the JSON and satisfy all validation rules. Return only the corrected JSON object.",
+                "instruction": "Repair the JSON and satisfy all validation rules. If first_positive_tag_failed, preserve the required view phrase and copy at least one exact whole-word material identity token from the current slot evidence into the first positive tag. Do not use only a synonym or morphological variant. Return only the corrected JSON object.",
             }
             payload["messages"] = payload["messages"] + [{"role": "user", "content": json.dumps(feedback, ensure_ascii=False, indent=2)}]
         write_json(paths["request"] / f"llm2_request_attempt_{attempt}.json", payload)
@@ -455,18 +459,32 @@ def validate_first_tag(first: str, source: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_phrase(first)
     view_mode = source.get("sd15_view_mode")
     has_view = False
+    has_view_detail = False
     if view_mode == "top_down_closeup_surface":
-        has_view = "top" in normalized and "down" in normalized and "close" in normalized
+        has_view = "top" in normalized and "down" in normalized
+        has_view_detail = "close" in normalized or "closeup" in normalized
     elif view_mode == "front_facing_closeup_surface":
-        has_view = "front" in normalized and "facing" in normalized and "close" in normalized
+        has_view = "front" in normalized and "facing" in normalized
+        has_view_detail = "close" in normalized or "closeup" in normalized
     elif view_mode == "front_facing_panel_surface":
-        has_view = "front" in normalized and "facing" in normalized and ("panel" in normalized or "close" in normalized)
+        has_view = "front" in normalized and "facing" in normalized
+        has_view_detail = "panel" in normalized or "close" in normalized or "closeup" in normalized
     identity_tokens = material_identity_tokens(source)
     has_identity = any(re.search(rf"\b{re.escape(token)}\b", normalized) for token in identity_tokens)
     generic = normalized in GENERIC_FIRST_TAGS or normalized.replace("-", " ") in GENERIC_FIRST_TAGS
+    warnings = []
+    if has_view and not has_view_detail:
+        warnings.append({
+            "warning": "view_detail_keyword_missing",
+            "view_mode": view_mode,
+            "expected_detail": "closeup or panel when compatible",
+            "reason": "Orientation is valid; closeup/panel is diagnostic detail rather than a blocking requirement.",
+        })
     return {
         "passed": bool(first and has_view and has_identity and not generic),
         "has_view": has_view,
+        "has_view_detail": has_view_detail,
+        "warnings": warnings,
         "has_identity": has_identity,
         "generic_view_only": generic,
         "identity_tokens_checked": sorted(identity_tokens),
@@ -519,15 +537,37 @@ def validate_negative_terms(negatives: list[str], positives: list[str], source: 
             )
             continue
 
-        phrase_hits = [phrase for phrase in sorted(identity_phrases) if phrase_in_text(phrase, norm)]
-        if phrase_hits:
+        exact_phrase_hits = [phrase for phrase in sorted(identity_phrases) if norm == phrase]
+        if exact_phrase_hits:
             conflicts.append(
                 {
                     "term": term,
                     "status": "blocked",
-                    "error": "negative_contains_material_identity_phrase",
-                    "matched_identity_phrases": phrase_hits,
-                    "phrase_sources": {phrase: identity_phrases[phrase] for phrase in phrase_hits},
+                    "error": "negative_equals_material_identity_phrase",
+                    "matched_identity_phrases": exact_phrase_hits,
+                    "phrase_sources": {phrase: identity_phrases[phrase] for phrase in exact_phrase_hits},
+                    "phrase_conflict_checked": sorted(identity_phrases),
+                    "token_conflict_checked": {
+                        "core_tokens": sorted(core_token_sources),
+                        "carrier_tokens": sorted(carrier_token_sources),
+                    },
+                }
+            )
+            continue
+
+        multiword_phrase_hits = [
+            phrase
+            for phrase in sorted(identity_phrases)
+            if len(tokenize_identity_text(phrase)) > 1 and phrase_in_text(phrase, norm)
+        ]
+        if multiword_phrase_hits:
+            conflicts.append(
+                {
+                    "term": term,
+                    "status": "blocked",
+                    "error": "negative_contains_multiword_material_identity_phrase",
+                    "matched_identity_phrases": multiword_phrase_hits,
+                    "phrase_sources": {phrase: identity_phrases[phrase] for phrase in multiword_phrase_hits},
                     "phrase_conflict_checked": sorted(identity_phrases),
                     "token_conflict_checked": {
                         "core_tokens": sorted(core_token_sources),
@@ -539,20 +579,37 @@ def validate_negative_terms(negatives: list[str], positives: list[str], source: 
 
         core_hits = [token for token in sorted(core_token_sources) if token_in_text(token, norm)]
         if core_hits:
-            conflicts.append(
-                {
-                    "term": term,
-                    "status": "blocked",
-                    "error": "negative_contains_core_material_identity_token",
-                    "matched_core_tokens": core_hits,
-                    "identity_token_sources": {token: core_token_sources[token] for token in core_hits},
-                    "phrase_conflict_checked": sorted(identity_phrases),
-                    "token_conflict_checked": {
-                        "core_tokens": sorted(core_token_sources),
-                        "carrier_tokens": sorted(carrier_token_sources),
-                    },
-                }
-            )
+            if len(tokenize_identity_text(norm)) == 1:
+                conflicts.append(
+                    {
+                        "term": term,
+                        "status": "blocked",
+                        "error": "negative_contains_core_material_identity_token",
+                        "matched_core_tokens": core_hits,
+                        "identity_token_sources": {token: core_token_sources[token] for token in core_hits},
+                        "phrase_conflict_checked": sorted(identity_phrases),
+                        "token_conflict_checked": {
+                            "core_tokens": sorted(core_token_sources),
+                            "carrier_tokens": sorted(carrier_token_sources),
+                        },
+                    }
+                )
+            else:
+                audits.append(
+                    {
+                        "term": term,
+                        "status": "allowed_compound_negative",
+                        "reason": "Contains core identity token(s) inside a different multi-word state or contrast phrase.",
+                        "matched_identity_tokens": core_hits,
+                        "ignored_tokens": core_hits,
+                        "identity_token_sources": {token: core_token_sources[token] for token in core_hits},
+                        "phrase_conflict_checked": sorted(identity_phrases),
+                        "token_conflict_checked": {
+                            "core_tokens": sorted(core_token_sources),
+                            "carrier_tokens": sorted(carrier_token_sources),
+                        },
+                    }
+                )
             continue
 
         carrier_hits = [token for token in sorted(carrier_token_sources) if token_in_text(token, norm)]
@@ -602,18 +659,6 @@ def validate_stablematerials_brief(item: dict[str, Any]) -> dict[str, Any]:
     palette_words = count_english_words(color_palette)
     runtime_tokens = approximate_clip_token_count(runtime_prompt)
 
-    if not (STABLEMATERIALS_POSITIVE_MIN_WORDS <= positive_words <= STABLEMATERIALS_POSITIVE_MAX_WORDS):
-        errors.append(
-            {
-                "error": "stablematerials_positive_phrase_word_count_out_of_range",
-                "word_count": positive_words,
-                "allowed_range": [STABLEMATERIALS_POSITIVE_MIN_WORDS, STABLEMATERIALS_POSITIVE_MAX_WORDS],
-            }
-        )
-    if surface_words > STABLEMATERIALS_COMPONENT_MAX_WORDS:
-        errors.append({"error": "stablematerials_surface_structure_too_long", "word_count": surface_words, "max_words": STABLEMATERIALS_COMPONENT_MAX_WORDS})
-    if palette_words > STABLEMATERIALS_COMPONENT_MAX_WORDS:
-        errors.append({"error": "stablematerials_color_palette_too_long", "word_count": palette_words, "max_words": STABLEMATERIALS_COMPONENT_MAX_WORDS})
     if runtime_tokens > STABLEMATERIALS_RUNTIME_TOKEN_LIMIT:
         errors.append(
             {
@@ -632,7 +677,7 @@ def validate_stablematerials_brief(item: dict[str, Any]) -> dict[str, Any]:
         "runtime_prompt_approx_token_count": runtime_tokens,
         "runtime_prompt_max_approx_tokens": STABLEMATERIALS_RUNTIME_TOKEN_LIMIT,
         "runtime_prompt": runtime_prompt,
-        "note": "Token count is approximate and dependency-free; it is used to keep prompts below StableMaterials/CLIP limits without semantic post-trimming.",
+        "note": "Only the combined runtime token budget is blocking. Individual word counts are retained for diagnostics and do not block SD1.5 or StableMaterials.",
     }
 
 

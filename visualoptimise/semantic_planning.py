@@ -89,8 +89,22 @@ CONTEXT_REASON_ENUM = {
     "other",
 }
 
-def validate_map_package(project_root: Path, map_id: str) -> dict[str, Any]:
-    map_dir = project_root / "data" / "maps" / map_id
+def resolve_map_root(project_root: Path, map_root: Path | str | None = None) -> Path:
+    candidate = Path(map_root) if map_root is not None else project_root / "data" / "maps"
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def resolve_mesh_catalog_path(project_root: Path, mesh_catalog: Path | str | None = None) -> Path:
+    candidate = Path(mesh_catalog) if mesh_catalog is not None else project_root / "data" / "ue_asset_catalogs" / "mesh_catalog.json"
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def validate_map_package(project_root: Path, map_id: str, map_root: Path | str | None = None) -> dict[str, Any]:
+    map_dir = resolve_map_root(project_root, map_root) / map_id
     map_path = map_dir / "map.txt"
     legend_path = map_dir / "legend.json"
     style_path = map_dir / "style.txt"
@@ -162,8 +176,8 @@ def validate_map_package(project_root: Path, map_id: str) -> dict[str, Any]:
         "warnings": warnings,
     }
 
-def build_map_facts(project_root: Path, map_id: str) -> dict[str, Any]:
-    map_dir = project_root / "data" / "maps" / map_id
+def build_map_facts(project_root: Path, map_id: str, map_root: Path | str | None = None) -> dict[str, Any]:
+    map_dir = resolve_map_root(project_root, map_root) / map_id
     map_path = map_dir / "map.txt"
     legend_path = map_dir / "legend.json"
     style_path = map_dir / "style.txt"
@@ -206,8 +220,8 @@ def build_map_facts(project_root: Path, map_id: str) -> dict[str, Any]:
         "style_text": style_text,
     }
 
-def build_mesh_catalog_snapshot(project_root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    path = project_root / "data" / "ue_asset_catalogs" / "mesh_catalog.json"
+def build_mesh_catalog_snapshot(project_root: Path, mesh_catalog: Path | str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    path = resolve_mesh_catalog_path(project_root, mesh_catalog)
     full = json.loads(path.read_text(encoding="utf-8"))
     snapshot = {
         "schema_version": "mesh_catalog_snapshot_for_llm_v1",

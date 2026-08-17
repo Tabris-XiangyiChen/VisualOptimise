@@ -1,5 +1,9 @@
 {
   "default_map": "test_map1_clean",
+  "paths": {
+    "map_root": "data/maps",
+    "mesh_catalog": "data/ue_asset_catalogs/mesh_catalog_v2_kaykit_test.json"
+  },
   "runtime_texture_backend": "sd15",
   "semantic_mode": "llm",
   "material_mode": "preview-only",

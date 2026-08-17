@@ -67,6 +67,8 @@ def run_experiment(
     seeds: list[int] | None = None,
     images_per_material: int | None = None,
     stablematerials_enabled: bool = True,
+    map_root: Path | None = None,
+    mesh_catalog: Path | None = None,
 ) -> Path:
     maps = normalize_map_ids(map_ids, fallback_map_id)
     if len(maps) != 1:
@@ -84,9 +86,9 @@ def run_experiment(
     generation_config = resolve_generation_seed_config(pipeline.root, seeds, images_per_material)
     resolved_seeds = generation_config["seeds"]
     print(f"[VisualOptimise] Material generation: preparing run for {map_id} ({run_dir.name})")
-    command = build_command(pipeline.root, map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material, stablematerials_enabled)
+    command = build_command(pipeline.root, map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, seeds, images_per_material, stablematerials_enabled, map_root, mesh_catalog)
     write_text(paths["run"] / "command.txt", command)
-    write_json(paths["run"] / "run_config.json", build_run_config(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, generation_config, stablematerials_enabled))
+    write_json(paths["run"] / "run_config.json", build_run_config(map_id, dry_run, llm_max_attempts, prompt_llm_max_attempts, generation_config, stablematerials_enabled, map_root, mesh_catalog))
     write_json(paths["run"] / "generation_seed_config.json", generation_config)
 
     component_manifest = {
@@ -104,7 +106,7 @@ def run_experiment(
     write_json(paths["run"] / "component_reuse_manifest.json", component_manifest)
 
     print(f"[VisualOptimise] Material generation: LLM1 semantic planning for {map_id}")
-    llm1_result = run_llm1_and_resolver(pipeline, paths, map_id, dry_run, llm_max_attempts)
+    llm1_result = run_llm1_and_resolver(pipeline, paths, map_id, dry_run, llm_max_attempts, map_root, mesh_catalog)
     print(f"[VisualOptimise] Material generation: LLM2 prompt brief generation for {map_id}")
     llm2_result = run_fix3_llm2(pipeline, paths, llm1_result, dry_run, prompt_llm_max_attempts, stablematerials_enabled)
     material_slots = material_slots_from_compiled(llm2_result["compiled_sd15"])
@@ -247,6 +249,8 @@ def build_command(
     cli_seeds: list[int] | None,
     cli_images_per_material: int | None,
     stablematerials_enabled: bool,
+    map_root: Path | None,
+    mesh_catalog: Path | None,
 ) -> str:
     backend_paths = load_backend_paths(project_root)
     python_executable = str(backend_paths.dissertation_python or "python")
@@ -257,6 +261,10 @@ def build_command(
         r"--material-mode preview-only "
         f"--llm-max-attempts {llm_max_attempts} --prompt-llm-max-attempts {prompt_llm_max_attempts}"
     )
+    if map_root is not None:
+        command += f' --map-root "{map_root}"'
+    if mesh_catalog is not None:
+        command += f' --mesh-catalog "{mesh_catalog}"'
     if cli_seeds is not None:
         command += " --seeds " + " ".join(str(seed) for seed in cli_seeds)
     if cli_images_per_material is not None:
@@ -275,6 +283,8 @@ def build_run_config(
     prompt_llm_max_attempts: int,
     generation_config: dict[str, Any],
     stablematerials_enabled: bool,
+    map_root: Path | None,
+    mesh_catalog: Path | None,
 ) -> dict[str, Any]:
     return {
         "schema_version": "d6f_a4_run_config_v1",
@@ -289,6 +299,8 @@ def build_run_config(
         "prompt_llm_max_attempts": prompt_llm_max_attempts,
         "generation_seed_config": generation_config,
         "stablematerials_enabled": stablematerials_enabled,
+        "map_root": str(map_root) if map_root else None,
+        "mesh_catalog": str(mesh_catalog) if mesh_catalog else None,
         "started_at": timestamp_iso(),
         "plan_policy": "SD1.5 Plan A only; use the validated positive and negative prompt path as-is.",
         "strict_exclusions": {
@@ -400,13 +412,21 @@ def generate_random_seeds(count: int) -> list[int]:
     return seeds
 
 
-def run_llm1_and_resolver(pipeline: Any, paths: dict[str, Path], map_id: str, dry_run: bool, max_attempts: int) -> dict[str, Any]:
-    map_package_validation = material_planning.validate_map_package(pipeline.root, map_id)
+def run_llm1_and_resolver(
+    pipeline: Any,
+    paths: dict[str, Path],
+    map_id: str,
+    dry_run: bool,
+    max_attempts: int,
+    map_root: Path | None = None,
+    mesh_catalog: Path | None = None,
+) -> dict[str, Any]:
+    map_package_validation = material_planning.validate_map_package(pipeline.root, map_id, map_root)
     write_json(paths["map_facts"] / "map_package_validation.json", map_package_validation)
     if not map_package_validation["passed"]:
         raise RuntimeError("Map package validation failed.")
-    map_facts = material_planning.build_map_facts(pipeline.root, map_id)
-    mesh_catalog_full, mesh_snapshot = material_planning.build_mesh_catalog_snapshot(pipeline.root)
+    map_facts = material_planning.build_map_facts(pipeline.root, map_id, map_root)
+    mesh_catalog_full, mesh_snapshot = material_planning.build_mesh_catalog_snapshot(pipeline.root, mesh_catalog)
     map_validation = material_planning.validate_map_facts(map_facts)
     mesh_validation = material_planning.validate_mesh_snapshot(mesh_snapshot)
     llm1_system = material_planning.build_llm1_system_prompt()
@@ -603,17 +623,14 @@ def build_stablematerials_policy(prompt_validation: dict[str, Any], stablemateri
                 "No StableMaterials candidate structure is packaged when no StableMaterials files exist.",
             ],
         }
-    only_stablematerials_length_errors = bool(stable_errors) and all(
-        error.get("error") == "stablematerials_length_validation_failed"
-        for error in summary.get("errors", [])
-    )
+    has_stablematerials_length_errors = bool(stable_errors)
     return {
         "schema_version": "stablematerials_non_blocking_length_policy_v1",
-        "generation_enabled": not only_stablematerials_length_errors,
-        "downgraded_to_warning": only_stablematerials_length_errors,
+        "generation_enabled": not has_stablematerials_length_errors,
+        "downgraded_to_warning": has_stablematerials_length_errors,
         "reason": (
-            "Only StableMaterials prompt length validation failed after LLM2 retries; SD1.5 remains eligible for generation and RuntimeData export."
-            if only_stablematerials_length_errors
+            "StableMaterials prompt length validation failed after LLM2 retries; the length errors are warning-only and SD1.5 remains eligible for generation and RuntimeData export."
+            if has_stablematerials_length_errors
             else "StableMaterials prompt length validation passed or other blocking errors exist."
         ),
         "stablematerials_length_errors": stable_errors,

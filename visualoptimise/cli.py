@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from visualoptimise.config_loader import load_defaults
+from visualoptimise.config_loader import load_defaults, resolve_configured_path
 from visualoptimise.orchestrator import MainPipelineRequest, run_main_pipeline
 from visualoptimise.submission_validation import run_b3_submission_validation
 
@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the VisualOptimise production material pipeline.")
     parser.add_argument("--map", dest="map_id", default=defaults.get("default_map", "test_map1_clean"))
     parser.add_argument("--maps", nargs="*", help="Run the selected mode for multiple map packages in sequence.")
+    path_defaults = defaults.get("paths", {})
+    parser.add_argument("--map-root", default=path_defaults.get("map_root", "data/maps"), help="Directory containing map package folders.")
+    parser.add_argument("--mesh-catalog", default=path_defaults.get("mesh_catalog", "data/ue_asset_catalogs/mesh_catalog.json"), help="UE mesh catalog JSON path.")
     parser.add_argument("--full", action="store_true", help="Run material generation followed by RuntimeData export.")
     parser.add_argument("--generate-materials", action="store_true", help="Run material generation only.")
     parser.add_argument("--export-runtime-data", action="store_true", help="Export RuntimeData from an existing material run.")
@@ -70,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     if len(map_ids) > 1 and reuse_materials_from is not None:
         parser.error("--reuse-materials-from is single-map only. Omit it for multi-map export so each map can auto-select its own source run.")
     seeds = parse_seed_values(args.seeds)
+    map_root = resolve_configured_path(PROJECT_ROOT, args.map_root, "data/maps")
+    mesh_catalog = resolve_configured_path(PROJECT_ROOT, args.mesh_catalog, "data/ue_asset_catalogs/mesh_catalog.json")
     run_dirs: list[Path] = []
     try:
         for map_id in map_ids:
@@ -77,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             request = MainPipelineRequest(
                 project_root=PROJECT_ROOT,
                 map_id=map_id,
+                map_root=map_root,
+                mesh_catalog=mesh_catalog,
                 mode=mode,
                 dry_run=args.dry_run,
                 semantic_mode=args.semantic_mode,

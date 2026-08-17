@@ -1,0 +1,300 @@
+{
+  "catalog_version": "ue_mesh_catalog_v1",
+  "description": "KayKit V2 test catalog. Logical mesh IDs must match DA_GlobalMeshRegistryV2 in UE.",
+  "meshes": [
+    {
+      "mesh_id": "tile_plane",
+      "ue_mesh_note": "Baseline UE Engine BasicShapes Plane in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "floor_surface",
+        "grass_surface",
+        "wood_surface",
+        "flat_surface",
+        "walkable"
+      ],
+      "shape_type": "flat_tile",
+      "height_class": "flat",
+      "surface_orientation": "horizontal_surface",
+      "supports_material_families": [
+        "stone",
+        "wood",
+        "grass",
+        "organic_ground",
+        "sand",
+        "dirt"
+      ],
+      "default_height": 0,
+      "default_z_offset": 0,
+      "description": "Baseline flat tile plane for normal floor, grass, path and bridge surfaces."
+    },
+    {
+      "mesh_id": "water_plane",
+      "ue_mesh_note": "Baseline UE Engine BasicShapes Plane used for water in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "water_surface",
+        "flat_surface"
+      ],
+      "shape_type": "flat_tile",
+      "height_class": "flat",
+      "surface_orientation": "liquid_surface",
+      "supports_material_families": [
+        "water"
+      ],
+      "default_height": 0,
+      "default_z_offset": -20,
+      "description": "Flat water surface plane. It keeps water as a separate logical mesh ID."
+    },
+    {
+      "mesh_id": "wall_block",
+      "ue_mesh_note": "Baseline UE Engine BasicShapes Cube in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "wall_surface",
+        "blocking",
+        "vertical_structure"
+      ],
+      "shape_type": "vertical_block",
+      "height_class": "high",
+      "surface_orientation": "vertical_surface",
+      "supports_material_families": [
+        "stone",
+        "wood",
+        "metal"
+      ],
+      "default_height": 300,
+      "default_z_offset": 0,
+      "description": "Baseline full tile wall block used for comparison with KayKit wall meshes."
+    },
+    {
+      "mesh_id": "door_proxy",
+      "ue_mesh_note": "Baseline UE proxy door mesh in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "door_prop",
+        "gate_prop",
+        "vertical_prop",
+        "interactive"
+      ],
+      "shape_type": "vertical_prop",
+      "height_class": "medium",
+      "surface_orientation": "panel_surface",
+      "supports_material_families": [
+        "wood",
+        "metal",
+        "stone"
+      ],
+      "default_height": 250,
+      "default_z_offset": 0,
+      "description": "Simple door or gate proxy used as a baseline for the KayKit door."
+    },
+    {
+      "mesh_id": "floor_kaykit",
+      "ue_mesh_note": "KayKit Floor.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "floor_surface",
+        "stone_surface",
+        "flat_surface",
+        "walkable"
+      ],
+      "shape_type": "flat_mesh_tile",
+      "height_class": "flat",
+      "surface_orientation": "horizontal_surface",
+      "supports_material_families": [
+        "stone",
+        "dirt",
+        "grass",
+        "wood"
+      ],
+      "default_height": 0,
+      "default_z_offset": 0,
+      "description": "KayKit floor mesh for a visible tile surface. It is used to test a floor mesh instead of a simple plane."
+    },
+    {
+      "mesh_id": "floor_dirt_kaykit",
+      "ue_mesh_note": "KayKit Floor_Dirt.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "floor_surface",
+        "dirt_surface",
+        "ground_surface",
+        "flat_surface",
+        "walkable"
+      ],
+      "shape_type": "flat_dirt_mesh_tile",
+      "height_class": "flat",
+      "surface_orientation": "horizontal_surface",
+      "supports_material_families": [
+        "dirt",
+        "grass",
+        "organic_ground"
+      ],
+      "default_height": 0,
+      "default_z_offset": 0,
+      "description": "KayKit dirt floor mesh for a rough outdoor ground tile."
+    },
+    {
+      "mesh_id": "primitive_floor_kaykit",
+      "ue_mesh_note": "KayKit Primitive_Floor.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "floor_surface",
+        "stone_surface",
+        "flat_surface",
+        "walkable"
+      ],
+      "shape_type": "flat_primitive_tile",
+      "height_class": "flat",
+      "surface_orientation": "horizontal_surface",
+      "supports_material_families": [
+        "stone",
+        "wood",
+        "dirt"
+      ],
+      "default_height": 0,
+      "default_z_offset": 0,
+      "description": "Simple KayKit primitive floor tile. It is useful as a controlled floor geometry test."
+    },
+    {
+      "mesh_id": "wall_segment",
+      "ue_mesh_note": "KayKit Primitive_Wall.fbx. Registry enables connected wall assembly for this simple wall mesh.",
+      "role_tags": [
+        "wall_surface",
+        "blocking",
+        "vertical_structure",
+        "connectable_wall",
+        "simple_wall_segment"
+      ],
+      "shape_type": "wall_segment",
+      "height_class": "high",
+      "surface_orientation": "vertical_surface",
+      "supports_material_families": [
+        "stone",
+        "wood"
+      ],
+      "default_height": 300,
+      "default_z_offset": 0,
+      "description": "Simple wall segment for horizontal, vertical, corner, T and cross connections. Its local long axis should be X."
+    },
+    {
+      "mesh_id": "wall_full_kaykit",
+      "ue_mesh_note": "KayKit Wall.fbx imported as a Static Mesh. Connected wall assembly is disabled.",
+      "role_tags": [
+        "wall_surface",
+        "blocking",
+        "vertical_structure",
+        "full_wall"
+      ],
+      "shape_type": "full_wall_mesh",
+      "height_class": "high",
+      "surface_orientation": "vertical_surface",
+      "supports_material_families": [
+        "stone",
+        "wood"
+      ],
+      "default_height": 300,
+      "default_z_offset": 0,
+      "description": "KayKit full wall mesh for a fixed wall section. It is not procedurally split into wall arms."
+    },
+    {
+      "mesh_id": "wall_half_kaykit",
+      "ue_mesh_note": "KayKit Wall_Half.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "wall_surface",
+        "low_wall",
+        "blocking",
+        "vertical_structure",
+        "manual_orientation"
+      ],
+      "shape_type": "half_wall_mesh",
+      "height_class": "medium",
+      "surface_orientation": "vertical_surface",
+      "supports_material_families": [
+        "stone",
+        "wood"
+      ],
+      "default_height": 150,
+      "default_z_offset": 0,
+      "description": "KayKit half wall mesh for a low wall section. It uses manual orientation and does not use connected wall assembly."
+    },
+    {
+      "mesh_id": "wall_doorway",
+      "ue_mesh_note": "KayKit Wall_Doorway.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "wall_surface",
+        "doorway_structure",
+        "blocking",
+        "vertical_structure",
+        "fixed_structure"
+      ],
+      "shape_type": "doorway_structure",
+      "height_class": "high",
+      "surface_orientation": "vertical_surface",
+      "supports_material_families": [
+        "stone",
+        "wood"
+      ],
+      "default_height": 300,
+      "default_z_offset": 0,
+      "description": "A fixed wall with a doorway opening. It is a structure mesh, not an interactive door Actor."
+    },
+    {
+      "mesh_id": "door_a",
+      "ue_mesh_note": "KayKit Door_A.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "door_prop",
+        "gate_prop",
+        "vertical_prop",
+        "interactive",
+        "align_to_wall"
+      ],
+      "shape_type": "vertical_door_mesh",
+      "height_class": "medium",
+      "surface_orientation": "panel_surface",
+      "supports_material_families": [
+        "wood",
+        "stone",
+        "metal"
+      ],
+      "default_height": 250,
+      "default_z_offset": 0,
+      "description": "KayKit wooden door mesh. It should align to adjacent walls and use a floor underlay."
+    },
+    {
+      "mesh_id": "stairs_full",
+      "ue_mesh_note": "KayKit Primitive_Stairs.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "stair_structure",
+        "walkable",
+        "full_tile_structure",
+        "manual_orientation"
+      ],
+      "shape_type": "full_tile_stairs",
+      "height_class": "medium",
+      "surface_orientation": "sloped_surface",
+      "supports_material_families": [
+        "stone",
+        "wood"
+      ],
+      "default_height": 150,
+      "default_z_offset": 0,
+      "description": "Full tile stairs mesh. The Builder does not infer rising direction, so rotation is manual."
+    },
+    {
+      "mesh_id": "slope",
+      "ue_mesh_note": "KayKit Primitive_Slope.fbx imported as a Static Mesh and assigned in DA_GlobalMeshRegistryV2.",
+      "role_tags": [
+        "slope_structure",
+        "walkable",
+        "manual_orientation",
+        "requires_underlay"
+      ],
+      "shape_type": "slope",
+      "height_class": "medium",
+      "surface_orientation": "sloped_surface",
+      "supports_material_families": [
+        "stone",
+        "dirt",
+        "wood"
+      ],
+      "default_height": 150,
+      "default_z_offset": 0,
+      "description": "Fixed direction slope mesh for testing non-flat structure placement and underlay."
+    }
+  ]
+}

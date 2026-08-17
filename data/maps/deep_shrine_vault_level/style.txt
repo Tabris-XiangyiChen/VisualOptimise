@@ -1,0 +1,4 @@
+A semi-realistic fantasy roguelike deep underground shrine vault.
+The map shows a colder and more mysterious lower dungeon area, with dark ancient stone, narrow water channels, damp wooden bridges, sparse underground moss, and a central raised stone shrine represented by the same stone-block material.
+The mood is quiet, abandoned, ritualistic, and damp, using muted dark greys, green-blue water, worn wood, and readable tile-based game materials.
+Generate flat or front-facing tileable material surfaces suitable for later UE5 modular tile and PCG reconstruction.

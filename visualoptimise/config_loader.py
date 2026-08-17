@@ -9,6 +9,10 @@ from typing import Any
 
 DEFAULT_CONFIG = {
     "default_map": "test_map1_clean",
+    "paths": {
+        "map_root": "data/maps",
+        "mesh_catalog": "data/ue_asset_catalogs/mesh_catalog.json",
+    },
     "runtime_texture_backend": "sd15",
     "semantic_mode": "llm",
     "material_mode": "preview-only",
@@ -40,3 +44,10 @@ def load_defaults(project_root: Path) -> dict[str, Any]:
     ):
         config.update(read_json_if_exists(project_root / relative))
     return config
+
+
+def resolve_configured_path(project_root: Path, value: str | None, default_relative: str) -> Path:
+    candidate = Path(value or default_relative)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()

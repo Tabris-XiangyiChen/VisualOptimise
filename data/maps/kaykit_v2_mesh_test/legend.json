@@ -1,0 +1,98 @@
+{
+  "0": {
+    "name": "void",
+    "description": "empty outside-play-area space with no visible surface",
+    "material_family": "void",
+    "generate_material": false
+  },
+  "#": {
+    "name": "connectable_stone_wall",
+    "description": "simple stone wall segment used for straight walls, corners, T junctions, and cross junctions",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "K": {
+    "name": "baseline_stone_block_wall",
+    "description": "full stone block wall used as a baseline comparison against the KayKit wall meshes",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "W": {
+    "name": "kaykit_full_stone_wall",
+    "description": "complete KayKit stone wall section with a strong vertical wall silhouette",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "H": {
+    "name": "kaykit_half_stone_wall",
+    "description": "low stone half wall used to test a smaller structure with a floor underlay",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "A": {
+    "name": "stone_wall_doorway",
+    "description": "fixed stone wall structure with a doorway opening, not a movable door",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  ".": {
+    "name": "kaykit_stone_floor",
+    "description": "worn stone floor mesh used inside the ruin and around the test rooms",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "F": {
+    "name": "kaykit_primitive_floor",
+    "description": "simple primitive stone floor tile used for controlled mesh fitting tests",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "d": {
+    "name": "kaykit_dirt_floor",
+    "description": "rough dirt ground mesh outside the stone ruin",
+    "material_family": "dirt",
+    "generate_material": true
+  },
+  "g": {
+    "name": "mossy_grass_ground",
+    "description": "dark green grassy ground with mossy damp patches around the ruin",
+    "material_family": "ground_organic",
+    "generate_material": true
+  },
+  "=": {
+    "name": "wooden_bridge",
+    "description": "aged brown wooden plank bridge crossing shallow water",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "D": {
+    "name": "kaykit_wooden_door",
+    "description": "old wooden door placed in a wall line and aligned to adjacent walls",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "P": {
+    "name": "baseline_gate_proxy",
+    "description": "simple baseline gate proxy used to compare with the KayKit door mesh",
+    "material_family": "wood",
+    "generate_material": true
+  },
+  "S": {
+    "name": "stone_stairs",
+    "description": "full tile stone stairs with a manually selected rising direction",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "^": {
+    "name": "stone_slope",
+    "description": "single stone slope tile with a manually selected facing direction",
+    "material_family": "solid_stone",
+    "generate_material": true
+  },
+  "~": {
+    "name": "shallow_river_water",
+    "description": "dark blue-green shallow water channel crossing the test area",
+    "material_family": "water_like",
+    "generate_material": true
+  }
+}
