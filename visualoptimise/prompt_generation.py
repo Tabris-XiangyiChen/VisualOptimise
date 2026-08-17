@@ -114,6 +114,9 @@ def build_llm2_system_prompt() -> str:
             "- Do not describe map location, gameplay role, object placement, story context, or complete scenes.",
             "- Do not invent unsupported material identities.",
             "- If source evidence contains contextual, symbolic, object-role, mesh-role, gameplay, or non-surface terms, do not place them in SD1.5 positive tags or runtime negative terms. Record them only in audit-only or rejected fields when necessary.",
+            "- Never copy an object, structure, prop, landmark, or container term into SD1.5 positive_tags merely because it appears in the legend, material category, raw clue, or mesh description.",
+            "- Object or structure terms such as bridge, stairs, steps, door, gate, frame, river, channel, wall block, complete structure, room, or prop belong in context or rejected fields, not as positive material identity.",
+            "- Describe reusable surface appearance using substance, colour, grain, mineral variation, roughness, joints, cracks, wear, moisture, ripples, or fine surface detail.",
             "",
             "SD1.5 brief rules:",
             "- SD1.5 output is a keyword-list prompt brief for a visual surface appearance image.",
@@ -128,12 +131,20 @@ def build_llm2_system_prompt() -> str:
             "- positive_tags must contain only short desired visual tags.",
             "- Each positive tag should be 2 to 8 words.",
             "- Use 6 to 10 positive tags per material.",
-            "- The first positive tag must combine the provided view mode with a specific material identity, such as a wall, floor, grass surface, wooden surface, wooden panel, or water surface.",
+            "- surface_orientation is geometry evidence, not a literal SD1.5 prompt phrase and not a camera tag.",
+            "- Use surface_orientation only to choose natural material-capture wording. Do not copy or paraphrase enum wording such as horizontal surface, vertical surface, panel surface, liquid surface, or sloped surface into positive_tags.",
+            "- The first positive tag must combine natural material-capture wording with the specific material identity from the evidence.",
+            "- For horizontal materials, prefer natural capture wording such as top-down close-up worn stone surface when compatible with the evidence.",
+            "- For vertical materials, prefer natural capture wording such as front-facing close-up natural stone wall surface when compatible with the evidence.",
+            "- For panel materials, prefer natural capture wording such as front-facing close-up aged wooden panel surface when compatible with the evidence.",
+            "- For liquid materials, prefer natural capture wording such as top-down close-up shallow blue-green water surface when compatible with the evidence.",
+            "- For sloped materials, describe the worn material surface without naming stairs, steps, slope objects, or complete structural geometry.",
             "- The first positive tag must contain at least one exact whole-word material identity token copied from the current material evidence, preferably from material_identity_coarse.",
             "- If material_identity_coarse is too generic, use an exact material-bearing token from the current canonical material identity evidence.",
             "- Do not rely only on synonyms or morphological variants in the first positive tag. For example, if the evidence contains 'wood', the first tag must contain the exact word 'wood', not only 'wooden'.",
-            "- The first positive tag must not be a generic view-only phrase such as top down closeup surface, front facing closeup surface, front facing panel surface, tileable material texture, or tileable surface texture.",
-            "- The provided sd15_view_mode must be represented in the first positive tag as natural SD1.5 language.",
+            "- The first positive tag must not be a generic orientation-only phrase or a generic texture phrase.",
+            "- Do not copy enum text such as horizontal_surface, vertical_surface, panel_surface, liquid_surface, or sloped_surface literally into positive_tags.",
+            "- Do not invent a surface orientation that conflicts with the catalog-provided surface_orientation.",
             "- If the material is meant to repeat on a simple surface, include a repeat-friendly tag such as tileable or seamless only when compatible with the provided target.",
             "- Tileable or seamless tags must not appear as tag 1 or tag 2. Prefer placing them after the primary material identity and concrete surface detail tags.",
             "- Include 2 to 4 intrinsic visual richness tags per material. These should describe surface structure, edge or joint detail, wear, weathering, moisture, moss, colour variation, fine detail, roughness, grain, ripples, mineral variation, or organic microdetail when supported by the evidence or style.",
@@ -142,6 +153,8 @@ def build_llm2_system_prompt() -> str:
             "- negative_terms should describe unwanted visual failure modes only when clearly useful.",
             "- Do not use a bare target material identity word as a negative term. A multi-word state or contrast phrase may contain an identity token when it excludes a visual variant without removing the material itself.",
             "- Do not put mesh role, gameplay role, map usage, or context-only terms into runtime negative_terms. Put uncertain context terms into audit_only_context_terms instead.",
+            "- Every exact term from context_clues_for_prompt_llm is audit-only evidence. Never copy it, paraphrase it, or derive a structural noun from it into runtime negative_terms or stablematerials.avoid_terms.",
+            "- Runtime negative terms must describe visual failure states, not the absence of the target object, structure, tile, role, or map context.",
             "",
             "StableMaterials brief rules:",
             "- StableMaterials output remains material-oriented.",
@@ -181,7 +194,6 @@ def build_llm2_user_prompt(prompt_input: dict[str, Any]) -> str:
                 "rejected_prompt_terms": ["..."],
                 "sd15": {
                     "target": "surface_appearance_image",
-                    "view_mode": "...",
                     "positive_tags": ["..."],
                     "richness_tags": [
                         {
@@ -226,11 +238,15 @@ def build_llm2_user_prompt(prompt_input: dict[str, Any]) -> str:
             "- backend_prompt_briefs must be an array.",
             "- Include exactly one backend_prompt_briefs entry for every material slot in dynamic_material_slot_evidence_v3.",
             "- Copy material_slot_id and canonical_material_id exactly.",
-            "- Copy sd15.view_mode exactly from the source material slot.",
+            "- Treat surface_orientation as read-only catalog evidence. Do not echo it as an SD1.5 output field.",
             "- SD1.5 positive_tags must contain 6 to 10 tags.",
             "- SD1.5 positive_tags must be desired visual tags only.",
             "- SD1.5 positive_tags must not contain no, not, without, semicolons, final sentence punctuation, or 'or' alternatives.",
-            "- The first SD1.5 positive tag must combine view phrase and specific material identity.",
+            "- surface_orientation is read-only geometry evidence, not a literal output phrase or camera tag.",
+            "- The first SD1.5 positive tag must combine natural material-capture wording with an exact material identity from the current evidence.",
+            "- Do not start the first tag with horizontal surface, vertical surface, panel surface, liquid surface, sloped surface, or a close paraphrase of an enum label.",
+            "- Use natural capture wording appropriate to the supplied orientation, such as top-down close-up for horizontal or liquid surfaces and front-facing close-up for vertical or panel surfaces.",
+            "- Do not use stairs, steps, bridge, door, gate, frame, river, channel, or complete prop as the positive material identity. Move object or structure terms to context_terms_used_for_understanding, audit_only_context_terms, or rejected_prompt_terms.",
             "- The first SD1.5 positive tag must contain at least one exact whole-word material identity token copied from the current slot evidence.",
             "- Prefer an exact token from material_identity_coarse. Do not use only a synonym or morphological variant of that token.",
             "- The first SD1.5 positive tag must not be a generic view-only phrase.",
@@ -241,6 +257,8 @@ def build_llm2_user_prompt(prompt_input: dict[str, Any]) -> str:
             "- Negative terms must not duplicate positive_tags.",
             "- Negative terms must not exactly equal the target material identity or a complete multi-word identity phrase. A multi-word state or contrast phrase may contain an identity token when it excludes a visual variant without removing the material itself.",
             "- Do not put current evidence context-only source terms into runtime negative_terms when uncertain; place them in audit_only_context_terms.",
+            "- Treat every exact context clue and every structural noun derived from a context clue as audit-only. Do not place it in sd15.negative_terms or stablematerials.avoid_terms.",
+            "- If retry feedback reports a context-clue conflict, remove that source term from runtime negatives and keep it only in audit_only_context_terms or rejected_source_terms.",
             "- Keep the combined StableMaterials runtime prompt within the configured token budget. Do not optimize by isolated word counts for individual fields.",
             "- The combined StableMaterials runtime prompt made from positive_phrase, surface_structure, and color_palette must stay under 55 approximate CLIP tokens.",
             "- Do not use old material_slot_evidence, old suggested_prompt_hint, fixed old material slots, or previous experiment knowledge.",
@@ -309,10 +327,27 @@ def build_dry_run_briefs(source_files: dict[str, Any]) -> dict[str, Any]:
                 positive_tags.append(term)
             if len(positive_tags) >= 4:
                 break
+        fallback_detail_tags = [
+            f"fine {label.replace('_', ' ')} surface structure",
+            f"subtle {label.replace('_', ' ')} wear",
+        ]
+        for tag in fallback_detail_tags:
+            if len(positive_tags) >= 3:
+                break
+            if tag not in positive_tags:
+                positive_tags.append(tag)
         positive_tags.append(f"tileable {label.replace('_', ' ')}")
-        while len(positive_tags) < 7:
-            positive_tags.append(f"subtle {label.replace('_', ' ')} detail")
-        richness = [{"tag": tag, "category": "surface_structure"} for tag in positive_tags[1:4]]
+        trailing_tags = [
+            f"restrained {label.replace('_', ' ')} weathering",
+            f"small scale {label.replace('_', ' ')} detail",
+            f"natural {label.replace('_', ' ')} texture variation",
+        ]
+        for tag in trailing_tags:
+            if len(positive_tags) >= 7:
+                break
+            if tag not in positive_tags:
+                positive_tags.append(tag)
+        richness = [{"tag": tag, "category": "surface_structure"} for tag in positive_tags[1:3]]
         items.append(
             {
                 "material_slot_id": slot["material_slot_id"],
@@ -323,7 +358,6 @@ def build_dry_run_briefs(source_files: dict[str, Any]) -> dict[str, Any]:
                 "rejected_prompt_terms": [],
                 "sd15": {
                     "target": "surface_appearance_image",
-                    "view_mode": slot["sd15_view_mode"],
                     "positive_tags": positive_tags[:8],
                     "richness_tags": richness[:3],
                     "negative_terms": [],
@@ -385,8 +419,6 @@ def validate_prompt_briefs(briefs: dict[str, Any], prompt_input: dict[str, Any])
 
         if item.get("canonical_material_id") != source.get("canonical_material_id"):
             errors.append({"material_slot_id": slot_id, "error": "canonical_material_id_mismatch"})
-        if sd15.get("view_mode") != source.get("sd15_view_mode"):
-            errors.append({"material_slot_id": slot_id, "error": "sd15.view_mode mismatch"})
         if not (6 <= len(tags) <= 10):
             errors.append({"material_slot_id": slot_id, "error": "positive_tags must contain 6 to 10 tags", "count": len(tags)})
 
@@ -457,34 +489,15 @@ def validate_prompt_briefs(briefs: dict[str, Any], prompt_input: dict[str, Any])
 
 def validate_first_tag(first: str, source: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_phrase(first)
-    view_mode = source.get("sd15_view_mode")
-    has_view = False
-    has_view_detail = False
-    if view_mode == "top_down_closeup_surface":
-        has_view = "top" in normalized and "down" in normalized
-        has_view_detail = "close" in normalized or "closeup" in normalized
-    elif view_mode == "front_facing_closeup_surface":
-        has_view = "front" in normalized and "facing" in normalized
-        has_view_detail = "close" in normalized or "closeup" in normalized
-    elif view_mode == "front_facing_panel_surface":
-        has_view = "front" in normalized and "facing" in normalized
-        has_view_detail = "panel" in normalized or "close" in normalized or "closeup" in normalized
     identity_tokens = material_identity_tokens(source)
     has_identity = any(re.search(rf"\b{re.escape(token)}\b", normalized) for token in identity_tokens)
     generic = normalized in GENERIC_FIRST_TAGS or normalized.replace("-", " ") in GENERIC_FIRST_TAGS
-    warnings = []
-    if has_view and not has_view_detail:
-        warnings.append({
-            "warning": "view_detail_keyword_missing",
-            "view_mode": view_mode,
-            "expected_detail": "closeup or panel when compatible",
-            "reason": "Orientation is valid; closeup/panel is diagnostic detail rather than a blocking requirement.",
-        })
     return {
-        "passed": bool(first and has_view and has_identity and not generic),
-        "has_view": has_view,
-        "has_view_detail": has_view_detail,
-        "warnings": warnings,
+        "passed": bool(first and has_identity and not generic),
+        "surface_orientation": source.get("surface_orientation"),
+        "surface_orientation_source": source.get("surface_orientation_source"),
+        "surface_orientation_blocking": False,
+        "warnings": [],
         "has_identity": has_identity,
         "generic_view_only": generic,
         "identity_tokens_checked": sorted(identity_tokens),
@@ -889,7 +902,7 @@ def material_specific_tileability_tag(source: dict[str, Any]) -> str:
                 source.get("canonical_material_id", ""),
                 source.get("material_identity_coarse", ""),
                 source.get("material_category", ""),
-                source.get("sd15_view_mode", ""),
+                source.get("surface_orientation", ""),
             ]
         )
     )
@@ -1151,12 +1164,8 @@ def display_label(slot: dict[str, Any]) -> str:
 
 def natural_view_identity(slot: dict[str, Any]) -> str:
     label = display_label(slot).replace("_", " ")
-    view = slot.get("sd15_view_mode")
-    if view == "front_facing_panel_surface":
-        return f"front-facing close-up {label.replace('door', 'wooden panel')}"
-    if view == "front_facing_closeup_surface":
-        return f"front-facing close-up {label}"
-    return f"top-down close-up {label}"
+    orientation = str(slot.get("surface_orientation") or "material_surface").replace("_", " ")
+    return f"{orientation} {label}"
 
 def normalize_phrase(value: str) -> str:
     return re.sub(r"\s+", " ", str(value).strip().lower().replace("-", " "))

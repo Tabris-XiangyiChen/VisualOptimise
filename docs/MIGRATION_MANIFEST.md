@@ -41,6 +41,14 @@ strings, default source-run removal, and self-contained orchestration.
 - Added `visualoptimise/submission_validation.py` for D6G-B3 import isolation,
   path hardcode, structure equivalence, behavior equivalence, and documentation
   validation.
+- Replaced the fixed Python-only LLM2 `sd15_view_mode` main path with
+  Mesh Catalog `surface_orientation` evidence. LLM2 no longer returns or copies
+  a `view_mode` field. The old `shape_type` to view-mode mapping remains as an
+  explicit compatibility fallback for catalogs without `surface_orientation`.
+- Made legacy-looking but map-derived canonical material names diagnostic rather
+  than blocking. Prior-leak protection still rejects legacy evidence keys and
+  sources; it no longer rejects a legitimate map material merely because its
+  semantic ID is `stone_wall` or `stone_floor`.
 
 ## Compatibility Identifiers
 

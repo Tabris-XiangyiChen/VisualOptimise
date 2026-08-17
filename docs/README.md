@@ -10,6 +10,11 @@ designed to run from its own `VisualOptimise` folder without importing old
 
 Key documents:
 
+- `SUPERVISOR_PROJECT_OVERVIEW.md`: English end-to-end architecture, data flow,
+  responsibilities, failure boundaries, and Mermaid diagrams for project
+  presentations.
+- `visualoptimise_pipeline_overview.png`: concise English flowchart for
+  supervisor presentations.
 - `PROJECT_STRUCTURE.md`: final project layout and module ownership.
 - `RUNBOOK.md`: commands for dry-run, material generation, and RuntimeData export.
 - `CONFIGURATION.md`: editable backend paths for WebUI, StableMaterials, and UE copy destination.

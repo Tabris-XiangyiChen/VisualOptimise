@@ -38,6 +38,12 @@ I:\MiniConda3\envs\dissertation\python.exe I:\Disertation\VisualOptimise\run_mai
 `style.txt` inside each package. The selected mesh catalog is used both for the LLM1
 sanitized snapshot and for Python resolver metadata; no legacy material-slot catalog is read.
 
+Mesh entries may declare `surface_orientation` as one of `horizontal_surface`,
+`vertical_surface`, `panel_surface`, `liquid_surface`, or `sloped_surface`. This
+catalog value is the primary geometry-orientation evidence passed to LLM2. Older
+catalogs without the field remain supported through the legacy `shape_type` to
+view-mode fallback, and generated evidence records which source was used.
+
 Export an existing successful material run into UE-copyable RuntimeData:
 
 ```powershell

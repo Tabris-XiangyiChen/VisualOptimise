@@ -1,0 +1,4 @@
+A semi-realistic fantasy roguelike underground ruin with an abandoned central shrine.
+The map contains a main northern entrance, a southern gate, connected stone chamber walls, complete KayKit wall sections, broken wall comparisons, low half-wall partitions, a fixed doorway, wooden doors, a proxy gate, worn stone rooms, mossy corners, a dirt threshold, flooded channels, wooden bridges, stairs, and one stone slope.
+The central water channels and bridges divide the ruin into readable gameplay spaces, while the inner stairs and low partitions mark the approach to the shrine. Keep the layout believable as a small dungeon level with rooms, passages, barriers, and traversal choices.
+Use muted dark grey stone, damp green moss, subdued blue-green water, aged brown wood, and a small amount of dark earth. Materials should be readable, tileable, and suitable for World Aligned projection in UE5 without very bright colors or dense noisy repetition.

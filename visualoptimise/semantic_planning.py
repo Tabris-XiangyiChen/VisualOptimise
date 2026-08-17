@@ -78,6 +78,20 @@ VIEW_MODE_BY_SHAPE = {
     "vertical_prop": "front_facing_panel_surface",
 }
 
+SURFACE_ORIENTATIONS = {
+    "horizontal_surface",
+    "vertical_surface",
+    "panel_surface",
+    "liquid_surface",
+    "sloped_surface",
+}
+
+SURFACE_ORIENTATION_BY_LEGACY_VIEW_MODE = {
+    "top_down_closeup_surface": "horizontal_surface",
+    "front_facing_closeup_surface": "vertical_surface",
+    "front_facing_panel_surface": "panel_surface",
+}
+
 CONTEXT_REASON_ENUM = {
     "object_shape",
     "usage_context",
@@ -233,6 +247,7 @@ def build_mesh_catalog_snapshot(project_root: Path, mesh_catalog: Path | str | N
                 "role_tags": mesh.get("role_tags", []),
                 "shape_type": mesh.get("shape_type"),
                 "height_class": mesh.get("height_class"),
+                "surface_orientation": mesh.get("surface_orientation"),
             }
             for mesh in full.get("meshes", [])
         ],
@@ -256,6 +271,7 @@ def validate_map_facts(map_facts: dict[str, Any]) -> dict[str, Any]:
 
 def validate_mesh_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     errors: list[Any] = []
+    warnings: list[Any] = []
     mesh_ids = []
     for mesh in snapshot.get("meshes", []):
         mesh_id = mesh.get("mesh_id")
@@ -267,9 +283,36 @@ def validate_mesh_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         mesh_ids.append(mesh_id)
         if not isinstance(mesh.get("role_tags"), list):
             errors.append(f"{mesh_id}.role_tags must be a list.")
+        orientation = mesh.get("surface_orientation")
+        if orientation is None:
+            warnings.append(
+                {
+                    "mesh_id": mesh_id,
+                    "warning": "surface_orientation missing; legacy shape-to-view fallback will be used",
+                }
+            )
+        elif orientation not in SURFACE_ORIENTATIONS:
+            errors.append(
+                {
+                    "mesh_id": mesh_id,
+                    "surface_orientation": orientation,
+                    "error": "surface_orientation is not a supported catalog value",
+                    "allowed": sorted(SURFACE_ORIENTATIONS),
+                }
+            )
     if find_key_hits(snapshot, {"material_slot_id", "suggested_prompt_hint", "source_policy_reason"}):
         errors.append("Forbidden prior keys found in mesh snapshot.")
-    return {"schema_version": "mesh_catalog_snapshot_validation_v1", "passed": not errors, "errors": errors, "mesh_ids": mesh_ids}
+    return {
+        "schema_version": "mesh_catalog_snapshot_validation_v1",
+        "passed": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "mesh_ids": mesh_ids,
+        "surface_orientation_declared_count": sum(
+            1 for mesh in snapshot.get("meshes", []) if mesh.get("surface_orientation") in SURFACE_ORIENTATIONS
+        ),
+        "legacy_fallback_count": len(warnings),
+    }
 
 def build_llm1_system_prompt() -> str:
     return "\n".join(
@@ -282,6 +325,7 @@ def build_llm1_system_prompt() -> str:
             "Do not rely on previous experiments, old material slot lists, old prompt styles, hidden project conventions, or information outside the provided inputs.",
             "Choose mesh_id only from mesh_catalog_snapshot_for_llm.meshes[*].mesh_id, or null for no geometry.",
             "If mesh_id is not null, selected_mesh_role_tags must be copied only from that selected mesh's role_tags.",
+            "surface_orientation is read-only mesh capability metadata supplied by the catalog. Do not invent, rewrite, or output it.",
             "canonical_material_id_proposal must be descriptive lowercase snake_case and based on material identity, not fixed legacy slot IDs.",
             "Raw legend names that look like old slots may appear only as raw map facts in legend_name or raw clues, never as runtime slots.",
             "Do not merge symbols that need different material viewing families into one canonical material group. Keep flat surfaces, vertical blocks, and vertical props as separate groups even when the broad substance is similar.",
@@ -658,8 +702,6 @@ def validate_llm1_plan(plan: dict[str, Any], map_facts: dict[str, Any], mesh_sna
     for group_id, group in group_by_id.items():
         if not isinstance(group_id, str) or not re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", group_id):
             errors.append({"canonical_material_id_proposal": group_id, "error": "must be lowercase snake_case"})
-        if group_id in OLD_FIXED_SLOT_IDS:
-            errors.append({"canonical_material_id_proposal": group_id, "error": "looks like fixed legacy slot id"})
         source_symbols = group.get("source_symbols", [])
         covered_symbols = group.get("covered_symbols", [])
         prompt_symbols = group.get("prompt_source_symbols", [])
@@ -678,18 +720,21 @@ def validate_llm1_plan(plan: dict[str, Any], map_facts: dict[str, Any], mesh_sna
         actual_mesh_ids = sorted({symbol_by_id[symbol].get("mesh_id") for symbol in source_symbols if symbol in symbol_by_id and symbol_by_id[symbol].get("mesh_id") is not None})
         if expected_mesh_ids != actual_mesh_ids:
             errors.append({"canonical_material_id_proposal": group_id, "expected_mesh_ids": expected_mesh_ids, "actual_source_mesh_ids": actual_mesh_ids, "error": "expected_mesh_ids mismatch"})
-        view_modes = sorted({view_mode_for_mesh_id(mesh_id, mesh_by_id) for mesh_id in expected_mesh_ids if mesh_id in mesh_by_id})
-        if len(view_modes) > 1:
-            errors.append(
-                {
-                    "canonical_material_id_proposal": group_id,
-                    "expected_mesh_ids": expected_mesh_ids,
-                    "view_modes": view_modes,
-                    "error": "canonical material group mixes incompatible material viewing families",
-                }
-            )
+        orientation_records = [resolve_mesh_surface_orientation(mesh_by_id[mesh_id]) for mesh_id in expected_mesh_ids if mesh_id in mesh_by_id]
+        details.setdefault("surface_orientation_audit", []).append(
+            {
+                "canonical_material_id_proposal": group_id,
+                "expected_mesh_ids": expected_mesh_ids,
+                "orientations": sorted({record["surface_orientation"] for record in orientation_records}),
+                "sources": sorted({record["surface_orientation_source"] for record in orientation_records}),
+                "blocking": False,
+            }
+        )
     details["mesh_id_all_from_catalog"] = not any(isinstance(error, dict) and "mesh_id" in error for error in errors)
     details["selected_mesh_role_tags_valid"] = not any(isinstance(error, dict) and "invalid_role_tags" in error for error in errors)
+    details["legacy_material_name_collisions"] = sorted(
+        group_id for group_id in group_by_id if group_id in OLD_FIXED_SLOT_IDS
+    )
     summary = {
         "schema_version": "d6f_a2_llm1_validation_summary_v1",
         "passed": not errors,
@@ -697,6 +742,8 @@ def validate_llm1_plan(plan: dict[str, Any], map_facts: dict[str, Any], mesh_sna
         "surface_terms_absent": not find_key_hits(plan, {"surface_terms"}),
         "mesh_id_all_from_catalog": details["mesh_id_all_from_catalog"],
         "selected_mesh_role_tags_valid": details["selected_mesh_role_tags_valid"],
+        "legacy_material_name_collisions": details["legacy_material_name_collisions"],
+        "legacy_material_name_collisions_blocking": False,
     }
     details["summary"] = summary
     return details
@@ -797,9 +844,37 @@ def build_dynamic_material_evidence(plan: dict[str, Any], resolved_materials: di
                 "shape_type": mesh_by_id.get(mesh_id, {}).get("shape_type"),
                 "height_class": mesh_by_id.get(mesh_id, {}).get("height_class"),
                 "role_tags": mesh_by_id.get(mesh_id, {}).get("role_tags", []),
+                **resolve_mesh_surface_orientation(mesh_by_id.get(mesh_id, {})),
             }
             for mesh_id in mesh_ids
         ]
+        orientation_values = sorted({item["surface_orientation"] for item in mesh_context})
+        primary_symbol = material.get("primary_prompt_symbol")
+        primary_mesh_id = next(
+            (tile.get("mesh_id") for tile in tiles if tile.get("symbol") == primary_symbol and tile.get("mesh_id")),
+            None,
+        )
+        primary_context = next((item for item in mesh_context if item["mesh_id"] == primary_mesh_id), None)
+        selected_orientation = (
+            primary_context["surface_orientation"]
+            if primary_context
+            else orientation_values[0] if orientation_values else "horizontal_surface"
+        )
+        selected_orientation_source = (
+            primary_context["surface_orientation_source"]
+            if primary_context
+            else mesh_context[0]["surface_orientation_source"] if mesh_context else "legacy_shape_view_mode_fallback"
+        )
+        orientation_warnings = []
+        if len(orientation_values) > 1:
+            orientation_warnings.append(
+                {
+                    "warning": "material group covers multiple surface orientations",
+                    "orientations": orientation_values,
+                    "selected_from_primary_prompt_symbol": primary_symbol,
+                    "blocking": False,
+                }
+            )
         slots.append(
             {
                 "material_slot_id": material_slot_id,
@@ -813,7 +888,10 @@ def build_dynamic_material_evidence(plan: dict[str, Any], resolved_materials: di
                 "excluded_detail_legend_entries": [legend_by_symbol[symbol] for symbol in material.get("excluded_detail_symbols", []) if symbol in legend_by_symbol],
                 "target_mesh_ids": mesh_ids,
                 "target_mesh_context": mesh_context,
-                "sd15_view_mode": view_mode_for_mesh_context(mesh_context),
+                "surface_orientation": selected_orientation,
+                "surface_orientation_source": selected_orientation_source,
+                "target_surface_orientations": orientation_values,
+                "surface_orientation_warnings": orientation_warnings,
                 "material_identity_coarse": material.get("material_identity_coarse"),
                 "material_category": material.get("material_category"),
                 "raw_material_clues": material.get("raw_material_clues", []),
@@ -828,7 +906,7 @@ def build_dynamic_material_evidence(plan: dict[str, Any], resolved_materials: di
                     "material_group_source": LLM1_SCHEMA,
                     "material_slot_id_source": "python_dynamic_id_policy",
                     "mesh_context_source": "mesh_catalog",
-                    "sd15_view_mode_source": "python_mesh_shape_policy",
+                    "surface_orientation_source": selected_orientation_source,
                 },
             }
         )
@@ -860,7 +938,12 @@ def build_prompt_llm_input(dynamic_evidence: dict[str, Any], map_facts: dict[str
         ],
         "map_evidence": {"map_id": map_facts["map_id"], "style_text": map_facts.get("style_text", "")},
         "dynamic_material_slots": [
-            {"material_slot_id": slot["material_slot_id"], "canonical_material_id": slot["canonical_material_id"], "sd15_view_mode": slot["sd15_view_mode"]}
+            {
+                "material_slot_id": slot["material_slot_id"],
+                "canonical_material_id": slot["canonical_material_id"],
+                "surface_orientation": slot["surface_orientation"],
+                "surface_orientation_source": slot["surface_orientation_source"],
+            }
             for slot in slots
         ],
         "material_slot_evidence": slots,
@@ -877,23 +960,42 @@ def validate_dynamic_evidence(evidence: dict[str, Any], resolved_materials: dict
         material_slot_id = slot.get("material_slot_id", "")
         if not re.fullmatch(r"mat_[a-z0-9_]+", material_slot_id):
             errors.append({"material_slot_id": material_slot_id, "error": "must be dynamic mat_* id"})
-        if material_slot_id.replace("mat_", "", 1) in OLD_FIXED_SLOT_IDS:
-            errors.append({"material_slot_id": material_slot_id, "error": "collapses to old fixed slot"})
-    return {"schema_version": "dynamic_material_slot_evidence_validation_v1", "passed": not errors, "errors": errors}
+        orientation = slot.get("surface_orientation")
+        if orientation not in SURFACE_ORIENTATIONS:
+            errors.append(
+                {
+                    "material_slot_id": material_slot_id,
+                    "surface_orientation": orientation,
+                    "error": "invalid resolved surface_orientation",
+                }
+            )
+    legacy_name_collisions = sorted(
+        slot.get("material_slot_id")
+        for slot in evidence.get("material_slots", [])
+        if slot.get("material_slot_id", "").replace("mat_", "", 1) in OLD_FIXED_SLOT_IDS
+    )
+    return {
+        "schema_version": "dynamic_material_slot_evidence_validation_v1",
+        "passed": not errors,
+        "errors": errors,
+        "legacy_material_name_collisions": legacy_name_collisions,
+        "legacy_material_name_collisions_blocking": False,
+    }
 
 def audit_prompt_llm_input(prompt_input: dict[str, Any]) -> dict[str, Any]:
     text = json.dumps(prompt_input, ensure_ascii=False)
     forbidden_hits = [term for term in ["suggested_prompt_hint", "source_policy_reason", "EXPECTED_SLOTS", "SLOT_VIEW_MODE"] if term in text]
-    old_slot_id_hits = [
+    old_slot_id_matches = [
         slot["material_slot_id"]
         for slot in prompt_input.get("material_slot_evidence", [])
         if slot.get("material_slot_id", "").replace("mat_", "", 1) in OLD_FIXED_SLOT_IDS
     ]
     return {
         "schema_version": "prior_leak_audit_for_prompt_llm_v1",
-        "passed": not forbidden_hits and not old_slot_id_hits,
+        "passed": not forbidden_hits,
         "forbidden_term_hits": forbidden_hits,
-        "old_fixed_slot_id_hits": old_slot_id_hits,
+        "old_fixed_slot_id_matches": old_slot_id_matches,
+        "old_fixed_slot_id_matches_blocking": False,
         "material_slot_evidence_is_dynamic": prompt_input.get("evidence_provenance") == "dynamic_material_slot_evidence_v3",
     }
 
@@ -938,6 +1040,22 @@ def view_mode_for_mesh_context(mesh_context: list[dict[str, Any]]) -> str:
 def view_mode_for_mesh_id(mesh_id: str, mesh_by_id: dict[str, dict[str, Any]]) -> str:
     shape_type = mesh_by_id.get(mesh_id, {}).get("shape_type")
     return VIEW_MODE_BY_SHAPE.get(shape_type, "top_down_closeup_surface")
+
+
+def resolve_mesh_surface_orientation(mesh: dict[str, Any]) -> dict[str, Any]:
+    declared = mesh.get("surface_orientation")
+    if declared in SURFACE_ORIENTATIONS:
+        return {
+            "surface_orientation": declared,
+            "surface_orientation_source": "mesh_catalog",
+            "legacy_view_mode_fallback": None,
+        }
+    legacy_view_mode = VIEW_MODE_BY_SHAPE.get(mesh.get("shape_type"), "top_down_closeup_surface")
+    return {
+        "surface_orientation": SURFACE_ORIENTATION_BY_LEGACY_VIEW_MODE[legacy_view_mode],
+        "surface_orientation_source": "legacy_shape_view_mode_fallback",
+        "legacy_view_mode_fallback": legacy_view_mode,
+    }
 
 def find_key_hits(value: Any, forbidden: set[str], path: str = "$") -> list[str]:
     hits: list[str] = []

@@ -12,8 +12,8 @@ working material pipeline.
 
 ## Core Pipeline
 
-- `visualoptimise/semantic_planning.py`: map package validation, map facts, LLM1 material planning, dynamic resolver helpers.
-- `visualoptimise/prompt_generation.py`: LLM2 D6E-style prompt brief generation, validation, bounded post-retry prompt-contract normalization, and material-identity-source-aware negative prompt conflict validation.
+- `visualoptimise/semantic_planning.py`: map package validation, map facts, LLM1 material planning, dynamic resolver helpers, catalog `surface_orientation` resolution, and legacy shape/view fallback.
+- `visualoptimise/prompt_generation.py`: LLM2 D6E-style prompt brief generation using resolved surface orientation as read-only evidence, validation, bounded post-retry prompt-contract normalization, and material-identity-source-aware negative prompt conflict validation.
 - `visualoptimise/material_generation_pipeline.py`: complete material preview pipeline using the extracted helpers.
 - `visualoptimise/preview_generation.py`: SD1.5 and StableMaterials preview generation helpers.
 - `visualoptimise/runtime_export.py`: export-only RuntimeData integration.
@@ -43,6 +43,30 @@ The following modules provide stable engineering names around extracted logic:
 - `outputs/runs`: timestamped run reports.
 - `generated/ue_ready/runtime_data`: refreshable UE-copyable latest package.
 - `generated/ue_ready/runtime_data_runs`: non-overwritten RuntimeData snapshots.
+
+## Surface Orientation Contract
+
+`surface_orientation` is mesh capability metadata, not an LLM-generated material
+property. The selected Mesh Catalog is authoritative when it declares one of:
+
+- `horizontal_surface`
+- `vertical_surface`
+- `panel_surface`
+- `liquid_surface`
+- `sloped_surface`
+
+LLM1 receives this field in its sanitized mesh snapshot but is instructed not to
+rewrite or return it. Python copies the selected mesh metadata into
+`target_mesh_context`, resolves a material-level orientation from the primary
+prompt symbol, and writes both `surface_orientation` and
+`surface_orientation_source` into dynamic material evidence. LLM2 receives that
+orientation as read-only context, but no longer echoes a `view_mode` field or has
+to reproduce fixed wording such as `top_down_closeup_surface`.
+
+For catalogs that omit `surface_orientation`, Python preserves the established
+`shape_type` to legacy view-mode mapping and converts its result to the new
+orientation enum. The evidence source is then
+`legacy_shape_view_mode_fallback`, making compatibility use explicit.
 
 ## Compatibility Identifiers
 

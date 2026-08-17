@@ -87,3 +87,22 @@ generated/ue_ready/runtime_data_runs
 
 The configured `ue_runtime.copy_destination` tells users where to copy this
 package inside the UE project. The Python export does not modify UE files.
+
+## Mesh Surface Orientation
+
+The mesh catalog selected by `paths.mesh_catalog` or `--mesh-catalog` may add:
+
+```json
+{
+  "mesh_id": "wall_segment",
+  "shape_type": "wall_segment",
+  "surface_orientation": "vertical_surface"
+}
+```
+
+Supported values are `horizontal_surface`, `vertical_surface`,
+`panel_surface`, `liquid_surface`, and `sloped_surface`. A declared value is
+validated and used directly. Missing values are nonblocking: the pipeline uses
+the previous `shape_type` mapping and records
+`surface_orientation_source = legacy_shape_view_mode_fallback`. Invalid declared
+values are blocking catalog errors rather than silently falling back.
