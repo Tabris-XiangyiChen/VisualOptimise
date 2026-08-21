@@ -14,7 +14,7 @@ from visualoptimise.artifacts import write_json, write_text
 
 LLM1_SCHEMA = "llm_tile_material_plan_v2"
 
-LLM2_SCHEMA = "material_prompt_briefs_v3"
+LLM2_SCHEMA = "material_prompt_briefs_v4"
 
 LLM1_FORBIDDEN_FIELDS = {
     "surface_terms",
