@@ -5,6 +5,26 @@ Visual Optimization material pipeline. It keeps the validated two-LLM material
 planning and preview generation flow, plus UE RuntimeData export, inside this
 folder instead of depending on archived experiment packages.
 
+## Setup
+
+Use Python 3.10 or newer and install the core dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+The optional local StableMaterials backend additionally requires a compatible
+PyTorch installation and:
+
+```powershell
+python -m pip install -r requirements-stablematerials.txt
+```
+
+The checked-in default LLM profile is DeepSeek. Set `DEEPSEEK_API_KEY` or place
+the key in the ignored `config/secrets/deepseek_api_key.txt`. The alternative
+Qwen/Ollama profile is preserved as `config/settings.qwen.json`; copy its
+settings into `config/settings.json` only when that local backend is available.
+
 Typical dry-run for the default map package:
 
 ```powershell

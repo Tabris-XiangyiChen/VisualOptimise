@@ -1036,6 +1036,12 @@ def build_summary(
 ) -> dict[str, Any]:
     generation_summary = diagnostics["generation_summary"]
     prompt_validation_passed = llm2_result["prompt_validation"]["summary"]["passed"]
+    llm1_attempt_log = llm1_result["llm1_attempts"].get("attempts", [])
+    llm2_attempt_log = llm2_result["llm2_attempts"].get("attempt_log", [])
+    llm1_first_attempt_passed = bool(llm1_attempt_log and llm1_attempt_log[0].get("validation_passed"))
+    llm1_final_passed = bool(llm1_attempt_log and llm1_attempt_log[-1].get("validation_passed"))
+    llm2_first_attempt_passed = bool(llm2_attempt_log and llm2_attempt_log[0].get("ok"))
+    llm2_final_passed = bool(llm2_attempt_log and llm2_attempt_log[-1].get("ok"))
     native_passed = bool(
         (dry_run or generation_summary["passed"])
         and llm1_result["llm1_validation"]["summary"]["passed"]
@@ -1068,6 +1074,10 @@ def build_summary(
         "llm2_attempts": llm2_result["llm2_attempts"].get("attempts", 0),
         "llm1_retry_count": llm1_result["llm1_attempts"].get("retry_count", 0),
         "llm2_retry_count": llm2_result["llm2_attempts"].get("retry_count", 0),
+        "llm1_first_attempt_passed": llm1_first_attempt_passed,
+        "llm1_final_passed": llm1_final_passed,
+        "llm2_first_attempt_passed": llm2_first_attempt_passed,
+        "llm2_final_passed": llm2_final_passed,
         "llm2_prompt_normalization": llm2_result.get("prompt_normalization", {}).get("summary", {}),
         "llm2_prompt_normalization_applied": llm2_result.get("prompt_normalization", {}).get("summary", {}).get("applied", False),
         "sd_webui_called": not dry_run,

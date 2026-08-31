@@ -1,0 +1,17 @@
+{
+  "webui": {
+    "base_url": "http://127.0.0.1:7860",
+    "timeout_seconds": 180
+  },
+  "llm": {
+    "provider": "ollama",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "endpoint": "/chat/completions",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "api_key_env": "OLLAMA_API_KEY",
+    "api_key_file": "config/secrets/ollama_api_key.txt",
+    "temperature": 0.1,
+    "timeout_seconds": 1500,
+    "json_mode": true
+  }
+}

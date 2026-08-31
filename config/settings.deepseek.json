@@ -1,0 +1,17 @@
+{
+  "webui": {
+    "base_url": "http://127.0.0.1:7860",
+    "timeout_seconds": 180
+  },
+  "llm": {
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "endpoint": "/chat/completions",
+    "model": "deepseek-chat",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "api_key_file": "config/secrets/deepseek_api_key.txt",
+    "temperature": 0.1,
+    "timeout_seconds": 60,
+    "json_mode": true
+  }
+}

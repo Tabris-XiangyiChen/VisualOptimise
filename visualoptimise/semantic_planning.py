@@ -5,11 +5,12 @@ from __future__ import annotations
 import copy
 import json
 import re
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from visualoptimise.llm_artifacts import build_json_chat_payload, call_one_json_llm, parse_json_response
+from visualoptimise.llm_artifacts import build_json_chat_payload, call_one_llm_raw, parse_json_response
 from visualoptimise.artifacts import write_json, write_text
 
 LLM1_SCHEMA = "llm_tile_material_plan_v2"
@@ -415,28 +416,82 @@ def call_llm_until_valid(
     last_parsed: dict[str, Any] | None = None
     for attempt in range(1, max_attempts + 1):
         write_json(out_dir / f"{label}_request_attempt_{attempt}.json", sanitize_payload_for_disk(current_payload))
+        raw_received = False
+        parse_succeeded = False
+        response_started = time.perf_counter()
+        response_elapsed_seconds: float | None = None
         try:
-            raw, parsed = call_one_json_llm(pipeline.settings, pipeline.root, current_payload)
+            raw = call_one_llm_raw(pipeline.settings, pipeline.root, current_payload)
+            response_elapsed_seconds = round(time.perf_counter() - response_started, 6)
+            raw_received = True
+            write_text(out_dir / f"{label}_raw_attempt_{attempt}.txt", raw)
+            parsed = parse_json_response(raw)
+            parse_succeeded = True
             last_raw = raw
             last_parsed = parsed
             validation = validator(parsed)
-            write_text(out_dir / f"{label}_raw_attempt_{attempt}.txt", raw)
             write_json(out_dir / f"{label}_parsed_attempt_{attempt}.json", parsed)
             write_json(out_dir / f"{label}_validation_attempt_{attempt}.json", validation)
-            attempts.append({"attempt": attempt, "parse_ok": True, "validation_passed": validation.get("passed"), "errors": validation.get("errors", [])})
+            attempts.append({"attempt": attempt, "response_elapsed_seconds": response_elapsed_seconds, "parse_ok": True, "validation_passed": validation.get("passed"), "errors": validation.get("errors", [])})
             if validation.get("passed"):
-                return parsed, raw, {"schema_version": f"{label}_attempts_summary_v1", "attempts": attempts, "llm_call_count": attempt, "retry_count": attempt - 1}
+                attempt_summary = {"schema_version": f"{label}_attempts_summary_v1", "attempts": attempts, "llm_call_count": attempt, "retry_count": attempt - 1}
+                write_json(out_dir / f"{label}_stage_summary.json", build_attempt_stage_summary(label, attempts, "passed"))
+                return parsed, raw, attempt_summary
             if attempt < max_attempts:
+                previous_content = current_payload["messages"][-1]["content"]
                 current_payload = build_repair_payload(current_payload, raw, validation.get("errors", []))
+                retry_feedback = current_payload["messages"][-1]["content"][len(previous_content):]
+                write_text(out_dir / f"{label}_retry_feedback_after_attempt_{attempt}.txt", retry_feedback)
         except Exception as exc:
+            if response_elapsed_seconds is None:
+                response_elapsed_seconds = round(time.perf_counter() - response_started, 6)
             error = f"{type(exc).__name__}: {exc}"
-            attempts.append({"attempt": attempt, "parse_ok": False, "validation_passed": False, "errors": [error]})
+            attempts.append({"attempt": attempt, "response_elapsed_seconds": response_elapsed_seconds, "parse_ok": False, "validation_passed": False, "errors": [error]})
             write_text(out_dir / f"{label}_error_attempt_{attempt}.txt", error)
+            if raw_received and not parse_succeeded:
+                write_json(
+                    out_dir / f"{label}_parse_audit_attempt_{attempt}.json",
+                    {
+                        "schema_version": "llm_parse_audit_v1",
+                        "stage": label,
+                        "attempt": attempt,
+                        "raw_response_saved": True,
+                        "parse_passed": False,
+                        "validator_called": False,
+                        "errors": [error],
+                    },
+                )
             if attempt < max_attempts:
+                previous_content = current_payload["messages"][-1]["content"]
                 current_payload = build_repair_payload(current_payload, last_raw, [error])
+                retry_feedback = current_payload["messages"][-1]["content"][len(previous_content):]
+                write_text(out_dir / f"{label}_retry_feedback_after_attempt_{attempt}.txt", retry_feedback)
+    attempt_summary = {
+        "schema_version": f"{label}_attempts_summary_v1",
+        "attempts": attempts,
+        "llm_call_count": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+    }
+    write_json(out_dir / f"{label}_attempts_summary.json", attempt_summary)
+    write_json(out_dir / f"{label}_stage_summary.json", build_attempt_stage_summary(label, attempts, "failed"))
     if last_parsed is not None:
-        return last_parsed, last_raw, {"schema_version": f"{label}_attempts_summary_v1", "attempts": attempts, "llm_call_count": len(attempts), "retry_count": max(0, len(attempts) - 1)}
+        return last_parsed, last_raw, attempt_summary
     raise RuntimeError(f"{label} failed without parseable response.")
+
+
+def build_attempt_stage_summary(label: str, attempts: list[dict[str, Any]], status: str) -> dict[str, Any]:
+    first_passed = bool(attempts and attempts[0].get("validation_passed"))
+    final_passed = bool(attempts and attempts[-1].get("validation_passed"))
+    return {
+        "schema_version": "llm_stage_attempt_summary_v1",
+        "stage": label,
+        "status": status,
+        "attempt_count": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+        "first_attempt_passed": first_passed,
+        "final_passed": final_passed,
+        "attempts": attempts,
+    }
 
 def build_repair_payload(payload: dict[str, Any], raw: str, errors: list[Any]) -> dict[str, Any]:
     repaired = copy.deepcopy(payload)

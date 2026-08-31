@@ -123,7 +123,7 @@ def read_api_key(project_root: Path, llm_settings: dict[str, Any] | None = None)
     )
 
 
-def call_one_json_llm(settings: dict, project_root: Path, request_payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def call_one_llm_raw(settings: dict, project_root: Path, request_payload: dict[str, Any]) -> str:
     llm_settings = settings.get("llm", {})
     api_key = read_api_key(project_root, llm_settings)
     base_url = llm_settings.get("base_url", "https://api.deepseek.com").rstrip("/")
@@ -141,7 +141,12 @@ def call_one_json_llm(settings: dict, project_root: Path, request_payload: dict[
     )
     response.raise_for_status()
     payload = response.json()
-    raw = payload["choices"][0]["message"]["content"]
+    return payload["choices"][0]["message"]["content"]
+
+
+def call_one_json_llm(settings: dict, project_root: Path, request_payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Compatibility wrapper for callers that do not need pre-parse logging."""
+    raw = call_one_llm_raw(settings, project_root, request_payload)
     return raw, parse_json_response(raw)
 
 

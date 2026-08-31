@@ -8,10 +8,11 @@ from __future__ import annotations
 import copy
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
-from visualoptimise.llm_artifacts import call_one_json_llm
+from visualoptimise.llm_artifacts import call_one_llm_raw, parse_json_response
 from visualoptimise.artifacts import read_json, write_json, write_text
 
 FIX2_SUFFIX = "d6f_a3_fix2_preview_image_generation"
@@ -289,27 +290,70 @@ def call_llm2_until_valid(
                 "previous_validation_errors": attempts[-1].get("validation", {}).get("summary", {}).get("errors", []),
                 "instruction": "Repair the JSON and satisfy all validation rules. If first_positive_tag_failed, preserve the required view phrase and copy at least one exact whole-word material identity token from the current slot evidence into the first positive tag. Do not use only a synonym or morphological variant. Return only the corrected JSON object.",
             }
+            write_json(paths["response"] / f"llm2_retry_feedback_after_attempt_{attempt - 1}.json", feedback)
             payload["messages"] = payload["messages"] + [{"role": "user", "content": json.dumps(feedback, ensure_ascii=False, indent=2)}]
         write_json(paths["request"] / f"llm2_request_attempt_{attempt}.json", payload)
+        raw_received = False
+        parse_succeeded = False
+        response_started = time.perf_counter()
+        response_elapsed_seconds: float | None = None
         try:
-            raw, parsed = call_one_json_llm(pipeline.settings, pipeline.root, payload)
+            raw = call_one_llm_raw(pipeline.settings, pipeline.root, payload)
+            response_elapsed_seconds = round(time.perf_counter() - response_started, 6)
+            raw_received = True
+            write_text(paths["response"] / f"llm2_raw_response_attempt_{attempt}.txt", raw)
+            parsed = parse_json_response(raw)
+            parse_succeeded = True
         except Exception as exc:
-            attempts.append({"attempt": attempt, "ok": False, "error": str(exc)})
+            if response_elapsed_seconds is None:
+                response_elapsed_seconds = round(time.perf_counter() - response_started, 6)
+            attempts.append({"attempt": attempt, "response_elapsed_seconds": response_elapsed_seconds, "ok": False, "error": str(exc)})
             write_text(paths["response"] / f"llm2_error_attempt_{attempt}.txt", str(exc))
+            if raw_received and not parse_succeeded:
+                write_json(
+                    paths["response"] / f"llm2_parse_audit_attempt_{attempt}.json",
+                    {
+                        "schema_version": "llm_parse_audit_v1",
+                        "stage": "llm2",
+                        "attempt": attempt,
+                        "raw_response_saved": True,
+                        "parse_passed": False,
+                        "validator_called": False,
+                        "errors": [f"{type(exc).__name__}: {exc}"],
+                    },
+                )
             continue
         last_raw = raw
         last_parsed = parsed
-        write_text(paths["response"] / f"llm2_raw_response_attempt_{attempt}.txt", raw)
         write_json(paths["response"] / f"llm2_parsed_response_attempt_{attempt}.json", parsed)
         validation = validate_prompt_briefs(parsed, prompt_input)
         write_json(paths["response"] / f"llm2_validation_attempt_{attempt}.json", validation)
-        attempts.append({"attempt": attempt, "ok": validation["summary"]["passed"], "validation": validation})
+        attempts.append({"attempt": attempt, "response_elapsed_seconds": response_elapsed_seconds, "ok": validation["summary"]["passed"], "validation": validation})
         if validation["summary"]["passed"]:
-            return parsed, raw, {"llm2_called": True, "attempts": attempt, "retry_count": attempt - 1, "attempt_log": attempts}
-    write_json(paths["response"] / "llm2_attempts_summary.json", {"llm2_called": True, "attempts": len(attempts), "attempt_log": attempts})
+            attempt_summary = {"llm2_called": True, "attempts": attempt, "retry_count": attempt - 1, "attempt_log": attempts}
+            write_json(paths["response"] / "llm2_stage_summary.json", build_llm2_stage_summary(attempts, "passed"))
+            return parsed, raw, attempt_summary
+    attempt_summary = {"llm2_called": True, "attempts": len(attempts), "retry_count": max(0, len(attempts) - 1), "attempt_log": attempts}
+    write_json(paths["response"] / "llm2_attempts_summary.json", attempt_summary)
+    write_json(paths["response"] / "llm2_stage_summary.json", build_llm2_stage_summary(attempts, "failed"))
     if last_parsed:
-        return last_parsed, last_raw, {"llm2_called": True, "attempts": len(attempts), "retry_count": max(0, len(attempts) - 1), "attempt_log": attempts}
+        return last_parsed, last_raw, attempt_summary
     raise RuntimeError("LLM2 failed before returning parseable JSON.")
+
+
+def build_llm2_stage_summary(attempts: list[dict[str, Any]], status: str) -> dict[str, Any]:
+    first_passed = bool(attempts and attempts[0].get("ok"))
+    final_passed = bool(attempts and attempts[-1].get("ok"))
+    return {
+        "schema_version": "llm_stage_attempt_summary_v1",
+        "stage": "llm2",
+        "status": status,
+        "attempt_count": len(attempts),
+        "retry_count": max(0, len(attempts) - 1),
+        "first_attempt_passed": first_passed,
+        "final_passed": final_passed,
+        "attempts": attempts,
+    }
 
 def build_dry_run_briefs(source_files: dict[str, Any]) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
@@ -429,11 +473,26 @@ def validate_prompt_briefs(briefs: dict[str, Any], prompt_input: dict[str, Any])
             errors.append({"material_slot_id": slot_id, "error": "first_positive_tag_failed", "details": first_check})
 
         tile_positions = [index for index, tag in enumerate(lowered_tags) if "tileable" in tag or "seamless" in tag]
-        tile_ok = bool(tile_positions) and all(pos >= 2 for pos in tile_positions)
+        early_tile_positions = [index for index in tile_positions if index < 2]
+        tile_present = bool(tile_positions)
+        tile_ok = tile_present and not early_tile_positions
         order_rows[-1]["tileability_positions"] = tile_positions
+        order_rows[-1]["tileability_present"] = tile_present
         order_rows[-1]["tileability_passed"] = tile_ok
-        if not tile_ok:
-            errors.append({"material_slot_id": slot_id, "error": "tileability_missing_or_too_early", "positions": tile_positions})
+        if not tile_present:
+            order_rows[-1]["tileability_missing_nonblocking"] = True
+            order_rows[-1]["warnings"] = ["tileability_missing_will_be_added_by_compiler"]
+        elif early_tile_positions:
+            order_rows[-1]["tileability_missing_nonblocking"] = False
+            errors.append(
+                {
+                    "material_slot_id": slot_id,
+                    "error": "tileability_missing_or_too_early",
+                    "positions": tile_positions,
+                }
+            )
+        else:
+            order_rows[-1]["tileability_missing_nonblocking"] = False
 
         weak_hits = sorted(set(lowered_tags) & WEAK_META_TAGS)
         if weak_hits:
@@ -479,7 +538,14 @@ def validate_prompt_briefs(briefs: dict[str, Any], prompt_input: dict[str, Any])
     }
     return {
         "summary": summary,
-        "prompt_order": {"passed": not any(row.get("passed") is False or row.get("tileability_passed") is False for row in order_rows), "rows": order_rows},
+        "prompt_order": {
+            "passed": not any(
+                row.get("passed") is False
+                or (row.get("tileability_passed") is False and not row.get("tileability_missing_nonblocking"))
+                for row in order_rows
+            ),
+            "rows": order_rows,
+        },
         "richness": {"passed": not any(row.get("passed") is False for row in richness_rows), "rows": richness_rows},
         "negative": {"passed": not any(row.get("passed") is False for row in negative_rows), "rows": negative_rows},
         "context_audit": {"passed": not any(row.get("passed") is False for row in context_rows), "rows": context_rows},
@@ -893,40 +959,12 @@ def is_tileability_tag(tag: str) -> bool:
 
 
 def material_specific_tileability_tag(source: dict[str, Any]) -> str:
-    label = normalize_phrase(display_label(source)).replace("_", " ")
-    evidence = normalize_phrase(
-        " ".join(
-            str(part)
-            for part in [
-                label,
-                source.get("canonical_material_id", ""),
-                source.get("material_identity_coarse", ""),
-                source.get("material_category", ""),
-                source.get("surface_orientation", ""),
-            ]
-        )
-    )
-    if "water" in evidence or "liquid" in evidence:
-        material = "water surface"
-    elif "grass" in evidence or "ground organic" in evidence:
-        material = "grass surface"
-    elif "wood" in evidence and "panel" in evidence:
-        material = "wooden panel"
-    elif "wood" in evidence and "door" in evidence:
-        material = "wooden panel"
-    elif "wood" in evidence and "plank" in evidence:
-        material = "wood planks"
-    elif "wood" in evidence:
-        material = "wood surface"
-    elif "stone" in evidence and "wall" in evidence:
-        material = "stone wall"
-    elif "stone" in evidence and "floor" in evidence:
-        material = "stone floor"
-    elif label:
-        material = label
-    else:
-        material = "material surface"
-    return f"tileable {material} texture"
+    """Return the generic SD1.5 fallback for a missing tileability cue.
+
+    The source is intentionally not inspected here: material identity remains
+    LLM-provided, while this phrase is only a backend repeatability anchor.
+    """
+    return "tileable material texture"
 
 
 def material_identity_tokens(source: dict[str, Any]) -> set[str]:
