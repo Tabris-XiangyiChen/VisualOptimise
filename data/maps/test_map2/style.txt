@@ -1,5 +1,0 @@
-A semi-realistic fantasy roguelike sunken courtyard ruin from the same game world as test_map1.
-The scene contains ancient grey stone walls, worn stone floors, rotting wooden bridges, mossy grass patches, wet reeds, and dark blue-green canal water.
-Compared with test_map1, this map feels more flooded and enclosed, but it should share the same muted natural colour palette, damp mossy surfaces, and readable tile-based material language.
-The purpose of this map is to test cross-map visual consistency: similar semantic materials should reuse the same material_slot_id and the same visual texture identity even when the ASCII symbols are different.
-Generate flat, tileable material surfaces suitable for later UE5 deterministic modular tile reconstruction.

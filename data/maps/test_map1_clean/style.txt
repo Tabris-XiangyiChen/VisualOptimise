@@ -1,4 +1,0 @@
-A semi-realistic fantasy roguelike outdoor ruin.
-The map uses ancient grey stone ruins, wooden walkways, dark grass, and shallow blue-green water.
-The mood is mysterious and abandoned, with muted natural colours, mossy damp surfaces, and readable tile-based game materials.
-Generate flat or front-facing tileable material surfaces suitable for later UE5 modular tile and PCG reconstruction.

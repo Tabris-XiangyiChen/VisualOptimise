@@ -1,4 +1,0 @@
-A semi-realistic fantasy roguelike ruin used for testing UE Map Builder V2 mesh placement.
-The map contains connected stone wall segments, full wall blocks, half walls, fixed doorway structures, KayKit floor meshes, dirt ground, grass, wooden bridge, water, doors, stairs, and a slope.
-The layout is a controlled modular test scene with straight walls, corners, T junctions, a cross junction, door alignment, a half-wall underlay test, full tile stairs, and a single slope.
-Use muted grey stone, dark dirt, mossy green grass, aged wood, and blue-green water. Keep the material surfaces readable and suitable for World Aligned projection in UE5.
